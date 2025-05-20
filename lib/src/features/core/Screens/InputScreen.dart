@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+import 'package:clerk_flutter/clerk_flutter.dart';
 
 class InputScreen extends StatefulWidget {
   @override
@@ -12,14 +12,25 @@ class _InputScreenState extends State<InputScreen> {
 
   void generateVideo() {
     setState(() => isLoading = true);
-    // Placeholder for processing logic
     Future.delayed(Duration(seconds: 3), () {
       setState(() => isLoading = false);
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => VideoScreen()),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Video generated!')),
       );
     });
+  }
+
+  void _showLoginDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        child: SizedBox(
+          width: 400,
+          height: 500,
+          child: ClerkAuthentication(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -28,35 +39,66 @@ class _InputScreenState extends State<InputScreen> {
       appBar: AppBar(
         title: Text('Create Your Video'),
         centerTitle: true,
+        actions: [
+          // You can uncomment this if you want sign in/out buttons in the app bar
+          // ClerkAuthBuilder(
+          //   signedInBuilder: (context, authState) {
+          //     return IconButton(
+          //       icon: Icon(Icons.logout),
+          //       onPressed: () async {
+          //         await authState.signOut();
+          //         ScaffoldMessenger.of(context).showSnackBar(
+          //           SnackBar(content: Text('Logged out')),
+          //         );
+          //       },
+          //       tooltip: 'Sign out',
+          //     );
+          //   },
+          //   signedOutBuilder: (context, authState) {
+          //     return TextButton(
+          //       onPressed: () => _showLoginDialog(context),
+          //       child: Text("Login", style: TextStyle(color: Colors.green)),
+          //     );
+          //   },
+          // ),
+        ],
       ),
-      drawer: AppDrawer(),
+      drawer: AppDrawer(showLoginDialog: _showLoginDialog),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "Prompt:",
-              style: TextStyle(fontSize: 18),
-            ),
+            Text("Prompt:", style: TextStyle(fontSize: 18)),
             SizedBox(height: 20),
             TextField(
               controller: _inputController,
               maxLines: 5,
               decoration: InputDecoration(
-                hintText: 'Describe the scene and action.Forexample: a beautiful lady in an oil painting,with soft light casting on her face.',
+                hintText: 'Describe the scene and action...',
+                border: OutlineInputBorder(),
               ),
             ),
             SizedBox(height: 30),
             ElevatedButton.icon(
               onPressed: isLoading ? null : generateVideo,
               icon: isLoading
-                  ? CircularProgressIndicator(color: Colors.white)
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : Icon(Icons.video_call),
-              label: Text(isLoading ? 'Generating...' : 'Generate Video', style: TextStyle(color: Colors.white), ),
+              label: Text(
+                isLoading ? 'Generating...' : 'Generate Video',
+                style: TextStyle(color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(
                 minimumSize: Size(double.infinity, 50),
-                backgroundColor: const Color.fromARGB(255, 37, 171, 119),
+                backgroundColor: Color(0xFF25AB77),
               ),
             ),
           ],
@@ -66,32 +108,11 @@ class _InputScreenState extends State<InputScreen> {
   }
 }
 
-class VideoScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    // You can embed a video player here or show a sample video
-    return Scaffold(
-      appBar: AppBar(title: Text('Your Video')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.video_library, size: 100, color: Colors.blueAccent),
-            SizedBox(height: 20),
-            Text(
-              'Your video is ready!',
-              style: TextStyle(fontSize: 22),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
-
 class AppDrawer extends StatelessWidget {
+  final void Function(BuildContext) showLoginDialog;
+
+  const AppDrawer({required this.showLoginDialog});
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
@@ -99,30 +120,67 @@ class AppDrawer extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          // Header
-          UserAccountsDrawerHeader(
-            decoration: BoxDecoration(
-              color: Color(0xFF1E1E1E),
-            ),
-            accountName: Text('xAoNLCpr'),
-            accountEmail: Text('ID 29343036'),
-            currentAccountPicture: CircleAvatar(
-              backgroundColor: Colors.grey,
-              child: Icon(Icons.person, size: 40),
-            ),
-          ),
+          ClerkAuthBuilder(
+            signedInBuilder: (context, authState) {
+              final user = authState.user;
+              final userEmail = (user?.emailAddresses != null && user!.emailAddresses!.isNotEmpty)
+                  ? user.emailAddresses!.first.emailAddress
+                  : "No Email";
 
-          // Rounded Section
+              final userName = user?.firstName != null && user!.firstName!.isNotEmpty
+                  ? "${user.firstName} ${user.lastName ?? ''}".trim()
+                  : user?.username ?? "No Name";
+
+              return UserAccountsDrawerHeader(
+                decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
+                accountName: Text(userName),
+                accountEmail: Text(userEmail),
+                currentAccountPicture: CircleAvatar(
+                  backgroundColor: Colors.grey,
+                  backgroundImage: user?.imageUrl != null ? NetworkImage(user!.imageUrl!) : null,
+                  child: user?.imageUrl == null ? Icon(Icons.person, size: 40) : null,
+                ),
+              );
+            },
+            signedOutBuilder: (context, authState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+
+                children: [
+                  UserAccountsDrawerHeader(
+                    decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
+                    accountName: Text("Guest"),
+                    accountEmail: Text("Please log in"),
+                    currentAccountPicture: CircleAvatar(
+                      backgroundColor: Colors.grey,
+                      child: Icon(Icons.person_outline, size: 40),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: ElevatedButton.icon(
+                      icon: Icon(Icons.login),
+                      label: Text("Login"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
+                      onPressed: () => showLoginDialog(context),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
             child: Container(
               decoration: BoxDecoration(
                 color: Color(0xFF2C2C2E),
-                borderRadius: BorderRadius.circular(5)
+                borderRadius: BorderRadius.circular(5),
               ),
               child: Column(
                 children: [
-                  // Upgrade Card
                   Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Container(
@@ -139,114 +197,110 @@ class AppDrawer extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  // Credits + Manage Plan in One Card
-  Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-    child: Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade900,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          ListTile(
-            title: Text("Credits Details", style: TextStyle(color: Colors.white)),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.local_fire_department, color: Colors.green),
-                SizedBox(width: 5),
-                Text("166.00", style: TextStyle(color: Colors.green)),
-              ],
-            ),
-          ),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(
-            title: Text("Manage your plan", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    ),
-  ),
-
-  // Help Section in Card
-  Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-    child: Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade900,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          ListTile(title: Text("Messages", style: TextStyle(color: Colors.white))),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(title: Text("Help Center", style: TextStyle(color: Colors.white))),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(title: Text("Communities", style: TextStyle(color: Colors.white))),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(title: Text("Contact Us", style: TextStyle(color: Colors.white))),
-        ],
-      ),
-    ),
-  ),
-
-   // Help Section in Card
-  Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-    child: Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade900,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          ListTile(title: Text("Permission list", style: TextStyle(color: Colors.white))),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(title: Text("Privacy Policy", style: TextStyle(color: Colors.white))),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(title: Text("terms of services", style: TextStyle(color: Colors.white))),
-          Divider(color: Colors.grey.shade800, thickness: 0.2),
-          ListTile(title: Text("About Us", style: TextStyle(color: Colors.white))),
-        ],
-      ),
-    ),
-  ),
-
- Padding(
-  
-    padding: EdgeInsets.all(12), // apply padding inside container
-    child: Center(
-      child: SizedBox(
-        width: 150,
-        height: 40,
-        child: ElevatedButton(
-          onPressed: () {
-            // Add sign out logic here
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          child: Text(
-            "Sign out",
-            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
-    ),
-  ),
-
-
+                  buildCard([
+                    buildTile("Credits Details",
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.local_fire_department, color: Colors.green),
+                            SizedBox(width: 5),
+                            Text("166.00", style: TextStyle(color: Colors.green)),
+                          ],
+                        )),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("Manage your plan"),
+                  ]),
+                  buildCard([
+                    buildTile("Messages"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("Help Center"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("Communities"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("Contact Us"),
+                  ]),
+                  buildCard([
+                    buildTile("Permission list"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("Privacy Policy"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("Terms of services"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+                    buildTile("About Us"),
+                  ]),
+                  ClerkAuthBuilder(
+                    signedInBuilder: (context, authState) {
+                      return Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 150,
+                            height: 40,
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                await authState.signOut();
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Signed out')),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: Text(
+                                "Sign out",
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    signedOutBuilder: (context, authState) {
+                      return Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Center(
+                          child: TextButton(
+                            onPressed: () => showLoginDialog(context),
+                            child: Text("Login", style: TextStyle(color: Colors.green)),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget buildCard(List<Widget> children) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade900,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(children: children),
+      ),
+    );
+  }
+
+  ListTile buildTile(String title, {Widget? trailing}) {
+    return ListTile(
+      title: Text(title, style: TextStyle(color: Colors.white)),
+      trailing: trailing,
     );
   }
 }

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "272427584569",
+    "project_id": "text2video-6224b",
+    "storage_bucket": "text2video-6224b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:272427584569:android:1598a2832acd4d783ad1e8",
+        "android_client_info": {
+          "package_name": "com.TrueSofts.text2video"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "272427584569-9gopk185a8t27drnr4dpvi24gn9jgg8g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.TrueSofts.text2video",
+            "certificate_hash": "b0d52ef3be6b6fb9f3c0254e110add7deff5f267"
+          }
+        },
+        {
+          "client_id": "272427584569-m7l7l8r02v7k5nvfaf0u6v5jp5ld4vsc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTX8p_aJWPnqvdWUJM6rpmX2nNvsS_MC8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "272427584569-m7l7l8r02v7k5nvfaf0u6v5jp5ld4vsc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -19,3 +19,12 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+buildscript {
+     repositories {
+        google() // ✅ Needed for Firebase and Google Services
+        mavenCentral() // Optional but recommended
+    }
+    dependencies {
+    classpath("com.google.gms:google-services:4.4.2") // ✅ Correct Kotlin DSL
+}
+}
