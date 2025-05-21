@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
+import 'package:text2video_app/src/features/core/Screens/Paymentpage.dart';
 
 class InputScreen extends StatefulWidget {
   @override
@@ -8,7 +9,13 @@ class InputScreen extends StatefulWidget {
 
 class _InputScreenState extends State<InputScreen> {
   final TextEditingController _inputController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController();
+
+  String _selectedAspectRatio = '16:9';
   bool isLoading = false;
+
+  // Add this state for payment overlay
+  bool _showPaymentPage = true; // show on app start
 
   void generateVideo() {
     setState(() => isLoading = true);
@@ -33,80 +40,179 @@ class _InputScreenState extends State<InputScreen> {
     );
   }
 
+  void _closePaymentPage() {
+    setState(() {
+      _showPaymentPage = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _inputController.dispose();
+    _durationController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Create Your Video'),
-        centerTitle: true,
-        actions: [
-          // You can uncomment this if you want sign in/out buttons in the app bar
-          // ClerkAuthBuilder(
-          //   signedInBuilder: (context, authState) {
-          //     return IconButton(
-          //       icon: Icon(Icons.logout),
-          //       onPressed: () async {
-          //         await authState.signOut();
-          //         ScaffoldMessenger.of(context).showSnackBar(
-          //           SnackBar(content: Text('Logged out')),
-          //         );
-          //       },
-          //       tooltip: 'Sign out',
-          //     );
-          //   },
-          //   signedOutBuilder: (context, authState) {
-          //     return TextButton(
-          //       onPressed: () => _showLoginDialog(context),
-          //       child: Text("Login", style: TextStyle(color: Colors.green)),
-          //     );
-          //   },
-          // ),
-        ],
-      ),
-      drawer: AppDrawer(showLoginDialog: _showLoginDialog),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Prompt:", style: TextStyle(fontSize: 18)),
-            SizedBox(height: 20),
-            TextField(
-              controller: _inputController,
-              maxLines: 5,
-              decoration: InputDecoration(
-                hintText: 'Describe the scene and action...',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 30),
-            ElevatedButton.icon(
-              onPressed: isLoading ? null : generateVideo,
-              icon: isLoading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Icon(Icons.video_call),
-              label: Text(
-                isLoading ? 'Generating...' : 'Generate Video',
-                style: TextStyle(color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                minimumSize: Size(double.infinity, 50),
-                backgroundColor: Color(0xFF25AB77),
-              ),
-            ),
-          ],
+    return Stack(
+      children: [
+        // Main InputScreen UI
+        Scaffold(
+          appBar: AppBar(
+            title: Text('Create Your Video'),
+            centerTitle: true,
+          ),
+          drawer: AppDrawer(showLoginDialog: _showLoginDialog),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: EdgeInsets.all(20),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: 700),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ... your existing input screen widgets here ...
+                        Text("Prompt:", style: TextStyle(fontSize: 18)),
+                        SizedBox(height: 10),
+                        TextField(
+                          controller: _inputController,
+                          maxLines: 5,
+                          decoration: InputDecoration(
+                            hintText: 'Describe the scene and action...',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        SizedBox(height: 20),
+                        Text("Video Duration (seconds):", style: TextStyle(fontSize: 16)),
+                        SizedBox(height: 10),
+                        TextField(
+                          controller: _durationController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: 'e.g. 10',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        SizedBox(height: 20),
+                        Text("Aspect Ratio:", style: TextStyle(fontSize: 16)),
+                        SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          value: _selectedAspectRatio,
+                          items: ['16:9', '4:3', '1:1'].map((ratio) {
+                            return DropdownMenuItem(
+                              value: ratio,
+                              child: Text(ratio),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() => _selectedAspectRatio = value!);
+                          },
+                          decoration: InputDecoration(
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        SizedBox(height: 30),
+                        // Gradient Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: isLoading ? null : generateVideo,
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                            ),
+                            child: Ink(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Color(0xFF25AB77), Color(0xFF1976D2)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Container(
+                                alignment: Alignment.center,
+                                child: isLoading
+                                    ? CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                                    : Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.video_call, color: Colors.white),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Generate Video',
+                                            style: TextStyle(color: Colors.white, fontSize: 16),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 30),
+
+                        if (_inputController.text.isNotEmpty && !isLoading)
+                          Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Container(
+                                height: 200,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade300,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.video_library,
+                                    size: 80,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _inputController.text,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
-      ),
+
+        // Payment overlay if shown
+        if (_showPaymentPage)
+          PaymentPage(onClose: _closePaymentPage),
+      ],
     );
   }
 }
+
+
 
 class AppDrawer extends StatelessWidget {
   final void Function(BuildContext) showLoginDialog;
@@ -145,8 +251,7 @@ class AppDrawer extends StatelessWidget {
             signedOutBuilder: (context, authState) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   UserAccountsDrawerHeader(
                     decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
