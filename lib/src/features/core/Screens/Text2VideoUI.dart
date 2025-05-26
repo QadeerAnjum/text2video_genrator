@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:text2video_app/main.dart';
+import 'package:text2video_app/main.dart' ;
 import 'package:text2video_app/src/features/core/Screens/Paymentpage.dart';
+import 'package:text2video_app/managers/userManager.dart';
 
 void main() {
   runApp(const MaterialApp(
@@ -383,6 +386,8 @@ class AppDrawer extends StatelessWidget {
 
   const AppDrawer({required this.showLoginDialog});
 
+  
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
@@ -508,6 +513,10 @@ class AppDrawer extends StatelessWidget {
                     buildTile("Terms of services"),
                     Divider(color: Colors.grey.shade800, thickness: 0.2),
                     buildTile("About Us"),
+                    Divider(color: Colors.grey.shade800, thickness: 0.2),
+
+                    // Show User ID tile above About Us
+                    buildTile("User ID: ${UserManager.currentUserId ?? 'Loading...'}")
                   ]),
                   ClerkAuthBuilder(
                     signedInBuilder: (context, authState) {
