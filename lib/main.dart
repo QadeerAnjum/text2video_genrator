@@ -9,12 +9,13 @@ void main() {
   runApp(Text2VideoApp());
 }
 
-
 class Text2VideoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClerkAuth(
-      config: ClerkAuthConfig(publishableKey: 'pk_test_ZmlybS1mb3dsLTcxLmNsZXJrLmFjY291bnRzLmRldiQ'),
+      config: ClerkAuthConfig(
+        publishableKey: 'pk_test_ZmlybS1mb3dsLTcxLmNsZXJrLmFjY291bnRzLmRldiQ',
+      ),
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Text To Video Generator',
@@ -36,7 +37,6 @@ class Text2VideoApp extends StatelessWidget {
   }
 }
 
-
 class SplashScreen extends StatefulWidget {
   @override
   _SplashScreenState createState() => _SplashScreenState();
@@ -48,13 +48,13 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
 
     UserManager.getUserID().then((userId) {
-    print("Backend User ID: $userId");   
+      print("Backend User ID: $userId");
 
-    Timer(Duration(seconds: 3), () {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => TextToVideoUI()),
-      );
-    });
+      Timer(Duration(seconds: 3), () {
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (_) => TextToVideoUI()));
+      });
     });
   }
 
