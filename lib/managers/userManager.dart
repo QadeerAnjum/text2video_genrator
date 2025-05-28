@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
+import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -15,13 +16,29 @@ class UserManager {
     String? storedUserId = prefs.getString(_userIdKey);
 
     if (storedUserId == null) {
-      storedUserId = Uuid().v4(); // generate once
+      storedUserId = await _getDeviceId();
       await prefs.setString(_userIdKey, storedUserId);
       await createUserInDatabase(storedUserId);
     }
 
     currentUserId = storedUserId;
     return storedUserId;
+  }
+
+  static Future<String> _getDeviceId() async {
+    final deviceInfo = DeviceInfoPlugin();
+
+    if (Platform.isAndroid) {
+      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+      String? androidId = androidInfo.data['androidId'] as String?;
+      return androidId ?? "unknown_device_id";
+    } else if (Platform.isIOS) {
+      IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+      String? iosId = iosInfo.identifierForVendor;
+      return iosId ?? "unknown_device_id";
+    } else {
+      return "unsupported_platform";
+    }
   }
 
   static Future<void> createUserInDatabase(String userId) async {

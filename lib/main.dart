@@ -4,6 +4,8 @@ import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:text2video_app/managers/userManager.dart';
 import 'package:text2video_app/src/features/core/Screens/Text2VideoUI.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:text2video_app/src/features/core/Screens/paymentPage.dart';
 
 void main() {
   runApp(Text2VideoApp());
@@ -42,26 +44,67 @@ class SplashScreen extends StatefulWidget {
   _SplashScreenState createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
 
-    UserManager.getUserID().then((userId) {
-      print("Backend User ID: $userId");
+    _handleFirstLaunch();
+  }
 
-      Timer(Duration(seconds: 3), () {
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (_) => TextToVideoUI()));
-      });
-    });
+  Future<void> _handleFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenPayment = prefs.getBool('hasSeenPayment') ?? false;
+
+    // Fetch user ID in background
+    final userId = await UserManager.getUserID();
+    print("Backend User ID: $userId");
+
+    // Wait for 3 seconds before navigating
+    await Future.delayed(Duration(seconds: 3));
+    _animationController.stop();
+
+    if (!hasSeenPayment) {
+      // Set the flag so payment screen only shows once
+      await prefs.setBool('hasSeenPayment', true);
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder:
+              (_) => PaymentPage(
+                onClose: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => TextToVideoUI()),
+                  );
+                },
+              ),
+        ),
+      );
+    } else {
+      // Go directly to main UI
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => TextToVideoUI()));
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.black,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -77,10 +120,19 @@ class _SplashScreenState extends State<SplashScreen> {
                   color: Colors.green,
                 ),
               ),
-              SizedBox(height: 30),
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                strokeWidth: 3,
+              const SizedBox(height: 30),
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return LinearProgressIndicator(
+                    value: _animationController.value,
+                    minHeight: 5,
+                    backgroundColor: Colors.green.withOpacity(0.2),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.greenAccent,
+                    ),
+                  );
+                },
               ),
             ],
           ),

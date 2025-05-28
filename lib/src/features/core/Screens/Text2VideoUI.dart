@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:text2video_app/main.dart';
-import 'package:text2video_app/src/features/core/Screens/Paymentpage.dart';
-import 'package:text2video_app/managers/userManager.dart';
+import 'package:clerk_flutter/clerk_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:text2video_app/src/features/core/Screens/appDrawer.dart';
+import 'dart:convert';
+import 'package:video_player/video_player.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:open_filex/open_filex.dart';
 
 void main() {
   runApp(
@@ -20,23 +26,160 @@ class TextToVideoUI extends StatefulWidget {
 
 class _TextToVideoUIState extends State<TextToVideoUI> {
   final TextEditingController _promptController = TextEditingController();
-  final TextEditingController _inputController = TextEditingController();
-  final TextEditingController _durationController = TextEditingController();
-  bool showDropUp = false;
-  String selectedDuration = '5s';
 
-  String selectedtRatio = '16:9';
+  String selectedDuration = '5s'; // options: '5s' or '10s'
+  String selectedAspectRatio = '16:9'; // options: '16:9' or '1:1'
+  String selectedModel = 'MINIMAX v1'; // options: 'MINIMAX v1' or 'MINIMAX v2'
+
   bool isLoading = false;
-  bool _showPaymentPage = true; // Shown on app start
 
-  void generateVideo() {
-    setState(() => isLoading = true);
-    Future.delayed(Duration(seconds: 3), () {
+  final String userId =
+      "dummy_user_123"; // TODO: replace with actual user ID from auth
+
+  String? generatedVideoUrl;
+  VideoPlayerController? _videoController;
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> ensureUserExists() async {
+    final url = Uri.parse('http://192.168.100.109:8000/create_user');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId}),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 400) {
+      // 400 = user already exists, so treat as success
+      throw Exception('Failed to create or verify user');
+    }
+  }
+
+  Future<void> generateVideo() async {
+    setState(() {
+      isLoading = true;
+      generatedVideoUrl = null;
+      _videoController?.dispose();
+      _videoController = null;
+    });
+
+    final prompt = _promptController.text.trim();
+    if (prompt.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a prompt')));
+      setState(() => isLoading = false);
+      return;
+    }
+
+    try {
+      await ensureUserExists();
+
+      final url = Uri.parse('http://192.168.100.109:8000/generate_video');
+      final int durationSec = int.parse(selectedDuration.replaceAll('s', ''));
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'prompt': prompt,
+          'duration': durationSec,
+          'aspect_ratio': selectedAspectRatio,
+          'model': selectedModel,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final downloadUrl = data['download_url'];
+
+        // Download video bytes from downloadUrl
+        final videoResponse = await http.get(Uri.parse(downloadUrl));
+        if (videoResponse.statusCode == 200) {
+          final bytes = videoResponse.bodyBytes;
+
+          // Save to local file
+          final directory = await getApplicationDocumentsDirectory();
+          final filePath =
+              '${directory.path}/generated_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+          final file = File(filePath);
+          await file.writeAsBytes(bytes);
+
+          // Initialize video controller with local file
+          _videoController = VideoPlayerController.file(file);
+          await _videoController!.initialize();
+          await _videoController!.play();
+
+          _videoController!.addListener(() {
+            setState(() {}); // update UI on video progress
+          });
+
+          setState(() {
+            isLoading = false;
+            generatedVideoUrl = filePath; // now this is local path
+          });
+        } else {
+          setState(() => isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to download generated video')),
+          );
+        }
+      } else {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to generate video: ${response.statusCode} - ${response.reasonPhrase}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
       setState(() => isLoading = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Video generated!')));
-    });
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> downloadVideo(
+    BuildContext context,
+    String? generatedVideoUrl,
+  ) async {
+    if (generatedVideoUrl == null) return;
+
+    if (kIsWeb) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Download not supported on Web')));
+      return;
+    }
+
+    try {
+      final file = File(generatedVideoUrl);
+      if (await file.exists()) {
+        // Just open the file directly
+        await OpenFilex.open(generatedVideoUrl);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Video opened from $generatedVideoUrl')),
+        );
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Video file does not exist')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error opening video: $e')));
+    }
   }
 
   void _showLoginDialog(BuildContext context) {
@@ -50,7 +193,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                   width:
                       constraints.maxWidth < 400 ? constraints.maxWidth : 400,
                   height: 500,
-                  child: ClerkAuthentication(),
+                  child: const ClerkAuthentication(),
                 );
               },
             ),
@@ -58,19 +201,59 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     );
   }
 
-  void _closePaymentPage() {
-    setState(() => _showPaymentPage = false);
+  Widget _dropOption(String text, {bool selected = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      decoration: BoxDecoration(
+        color: selected ? Colors.blueAccent : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          color: selected ? Colors.white : Colors.white54,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _inputController.dispose();
-    _durationController.dispose();
-    super.dispose();
+  Widget _dropOptionWithIcon(String text, {bool selected = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      decoration: BoxDecoration(
+        color: selected ? Colors.blueAccent : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.aspect_ratio,
+            color: selected ? Colors.white : Colors.white54,
+            size: 18,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: GoogleFonts.poppins(
+              color: selected ? Colors.white : Colors.white54,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isVideoPlaying = _videoController?.value.isPlaying ?? false;
+    final videoDuration = _videoController?.value.duration ?? Duration.zero;
+    final videoPosition = _videoController?.value.position ?? Duration.zero;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -89,7 +272,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: DropdownButton<String>(
-              value: 'MINIMAX v1',
+              value: selectedModel,
               dropdownColor: Colors.grey[900],
               style: const TextStyle(color: Colors.white),
               underline: Container(),
@@ -102,574 +285,320 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                         ),
                       )
                       .toList(),
-              onChanged: (_) {},
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    selectedModel = value;
+                  });
+                }
+              },
             ),
           ),
         ],
       ),
       drawer: AppDrawer(showLoginDialog: _showLoginDialog),
-
       body: SafeArea(
         child: Stack(
           children: [
-            // Scrollable Main Content
             Positioned.fill(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 160),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Prompt',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: TextField(
-                              controller: _promptController,
-                              maxLines: 6,
-                              maxLength: 2000,
-                              onChanged: (_) => setState(() {}),
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                contentPadding: const EdgeInsets.all(16),
-                                hintText:
-                                    'Describe the scene and the action...',
-                                hintStyle: GoogleFonts.poppins(
-                                  color: Colors.white54,
-                                  fontSize: 14,
-                                ),
-                                border: InputBorder.none,
-                                counterStyle: GoogleFonts.poppins(
-                                  color: Colors.white54,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Negative Prompt',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '⚠ It is prohibited to use AI generated content for illegal activities',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white54,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Drop-up Overlay
-            if (showDropUp)
-              Positioned(
-                bottom: 130,
-                left: 16,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 20,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(20),
-                      topRight: Radius.circular(20),
-                    ),
-                    border: Border.all(color: Colors.white12),
-                  ),
+                padding: const EdgeInsets.only(bottom: 180),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 16),
                       Text(
-                        "Duration:",
+                        'Prompt',
                         style: GoogleFonts.poppins(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 18,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        children: [
-                          GestureDetector(
-                            onTap:
-                                () => setState(() => selectedDuration = "5s"),
-                            child: _dropOption(
-                              "5s",
-                              selected: selectedDuration == "5s",
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[900],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextField(
+                          controller: _promptController,
+                          maxLines: 6,
+                          maxLength: 2000,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.all(16),
+                            hintText: 'Describe the scene and the action...',
+                            hintStyle: GoogleFonts.poppins(
+                              color: Colors.white54,
+                              fontSize: 14,
+                            ),
+                            border: InputBorder.none,
+                            counterStyle: GoogleFonts.poppins(
+                              color: Colors.white54,
                             ),
                           ),
-                          GestureDetector(
-                            onTap:
-                                () => setState(() => selectedDuration = "10s"),
-                            child: _dropOption(
-                              "10s",
-                              selected: selectedDuration == "10s",
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Warning with icon
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.redAccent,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Avoid violent scenes, disturbing content, or any NSFW material.',
+                              style: TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 10,
+                              ),
+                              textAlign: TextAlign.start,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+
+                      const SizedBox(height: 20),
                       Text(
-                        "Aspect Ratio:",
+                        'Example:',
                         style: GoogleFonts.poppins(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 18,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[900],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'A sunset over a calm ocean, and with reflection of sun in water.',
+
+                          style: GoogleFonts.poppins(
+                            color: Colors.white54,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Duration',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
                         children: [
                           GestureDetector(
-                            onTap:
-                                () => setState(() => selectedtRatio = "16:9"),
-                            child: _dropOptionWithIcon(
-                              "16:9",
-                              selected: selectedtRatio == "16:9",
+                            onTap: () {
+                              setState(() {
+                                selectedDuration = '5s';
+                              });
+                            },
+                            child: _dropOption(
+                              '5 seconds',
+                              selected: selectedDuration == '5s',
                             ),
                           ),
+                          const SizedBox(width: 12),
                           GestureDetector(
-                            onTap:
-                                () => setState(() => selectedtRatio = "9:16"),
-                            child: _dropOptionWithIcon(
-                              "9:16",
-                              selected: selectedtRatio == "9:16",
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => setState(() => selectedtRatio = "1:1"),
-                            child: _dropOptionWithIcon(
-                              "1:1",
-                              selected: selectedtRatio == "1:1",
+                            onTap: () {
+                              setState(() {
+                                selectedDuration = '10s';
+                              });
+                            },
+                            child: _dropOption(
+                              '10 seconds',
+                              selected: selectedDuration == '10s',
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Aspect Ratio',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                selectedAspectRatio = '16:9';
+                              });
+                            },
+                            child: _dropOptionWithIcon(
+                              '16:9',
+                              selected: selectedAspectRatio == '16:9',
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                selectedAspectRatio = '1:1';
+                              });
+                            },
+                            child: _dropOptionWithIcon(
+                              '1:1',
+                              selected: selectedAspectRatio == '1:1',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      if (generatedVideoUrl != null &&
+                          _videoController != null &&
+                          _videoController!.value.isInitialized)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Generated Video',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            AspectRatio(
+                              aspectRatio: _videoController!.value.aspectRatio,
+                              child: VideoPlayer(_videoController!),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    isVideoPlaying
+                                        ? Icons.pause_circle
+                                        : Icons.play_circle,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      if (isVideoPlaying) {
+                                        _videoController!.pause();
+                                      } else {
+                                        _videoController!.play();
+                                      }
+                                    });
+                                  },
+                                ),
+                                Expanded(
+                                  child: Slider(
+                                    activeColor: Colors.blueAccent,
+                                    inactiveColor: Colors.white24,
+                                    min: 0,
+                                    max:
+                                        videoDuration.inMilliseconds.toDouble(),
+                                    value:
+                                        videoPosition.inMilliseconds
+                                            .clamp(
+                                              0,
+                                              videoDuration.inMilliseconds,
+                                            )
+                                            .toDouble(),
+                                    onChanged: (value) {
+                                      _videoController!.seekTo(
+                                        Duration(milliseconds: value.toInt()),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Text(
+                                  '${videoPosition.inSeconds}s / ${videoDuration.inSeconds}s',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed:
+                                  () =>
+                                      downloadVideo(context, generatedVideoUrl),
+                              icon: const Icon(
+                                Icons.download,
+                                color: Colors.white,
+                              ),
+                              label: const Text(
+                                'Download Video',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                          ],
+                        ),
                     ],
                   ),
                 ),
               ),
-
-            // Bottom Section (Fixed)
+            ),
             Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          showDropUp = !showDropUp;
-                        });
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white30, width: 1.5),
-                          borderRadius: BorderRadius.circular(10),
-                          color: Colors.transparent,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Flexible(
-                              child: Wrap(
-                                spacing: 8,
-                                children: [
-                                  _dropOption("Duration", selected: true),
-                                  _dropOption("Aspect Ratio"),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              showDropUp
-                                  ? Icons.keyboard_arrow_down
-                                  : Icons.keyboard_arrow_up,
+              bottom: 24,
+              left: 16,
+              right: 16,
+              child: SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: isLoading ? null : generateVideo,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child:
+                      isLoading
+                          ? const SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
                               color: Colors.white,
-                              size: 28,
+                              strokeWidth: 2,
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: generateVideo,
-                        icon: const Icon(
-                          Icons.local_fire_department,
-                          color: Colors.black,
-                          size: 18,
-                        ),
-                        label: Text(
-                          'Generate',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.black,
+                          )
+                          : Text(
+                            'Generate Video',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _topTab(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.white24),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(color: Colors.white, fontSize: 14),
-      ),
-    );
-  }
-
-  Widget _dropOption(String label, {bool selected = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: selected ? Colors.white : Colors.transparent,
-        border: Border.all(
-          color: selected ? Colors.white : Colors.white30,
-          width: 1.5,
-        ),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(
-          color: selected ? Colors.black : Colors.white,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _dropOptionWithIcon(String label, {bool selected = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: selected ? Colors.white : Colors.transparent,
-        border: Border.all(
-          color: selected ? Colors.white : Colors.white30,
-          width: 1.5,
-        ),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(
-          color: selected ? Colors.black : Colors.white,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-}
-
-class AppDrawer extends StatelessWidget {
-  final void Function(BuildContext) showLoginDialog;
-
-  const AppDrawer({required this.showLoginDialog});
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: Color(0xFF1E1E1E),
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          ClerkAuthBuilder(
-            signedInBuilder: (context, authState) {
-              final user = authState.user;
-              final userEmail =
-                  (user?.emailAddresses != null &&
-                          user!.emailAddresses!.isNotEmpty)
-                      ? user.emailAddresses!.first.emailAddress
-                      : "No Email";
-
-              final userName =
-                  user?.firstName != null && user!.firstName!.isNotEmpty
-                      ? "${user.firstName} ${user.lastName ?? ''}".trim()
-                      : user?.username ?? "No Name";
-
-              return UserAccountsDrawerHeader(
-                decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
-                accountName: Text(userName),
-                accountEmail: Text(userEmail),
-                currentAccountPicture: CircleAvatar(
-                  backgroundColor: Colors.grey,
-                  backgroundImage:
-                      user?.imageUrl != null
-                          ? NetworkImage(user!.imageUrl!)
-                          : null,
-                  child:
-                      user?.imageUrl == null
-                          ? Icon(Icons.person, size: 40)
-                          : null,
-                ),
-              );
-            },
-            signedOutBuilder: (context, authState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  UserAccountsDrawerHeader(
-                    decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
-                    accountName: Text("Guest"),
-                    accountEmail: Text("Please log in"),
-                    currentAccountPicture: CircleAvatar(
-                      backgroundColor: Colors.grey,
-                      child: Icon(Icons.person_outline, size: 40),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: ElevatedButton.icon(
-                      icon: Icon(Icons.login, color: Colors.white),
-                      label: Text(
-                        "Login",
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 233, 175, 3),
-                      ),
-                      onPressed: () => showLoginDialog(context),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Color(0xFF2C2C2E),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Container(
-                      padding: EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: Icon(Icons.upgrade, color: Colors.black),
-                        title: Text(
-                          "Upgrade your plan",
-                          style: TextStyle(color: Colors.black),
-                        ),
-                        subtitle: Text(
-                          "More Credits & Premium Features",
-                          style: TextStyle(color: Colors.black54),
-                        ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => PaymentPage(
-                                    onClose: () {
-                                      Navigator.pop(context);
-                                    },
-                                  ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  buildCard([
-                    buildTile(
-                      "Credits Details",
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.local_fire_department,
-                            color: Colors.green,
-                          ),
-                          SizedBox(width: 5),
-                          Text("166.00", style: TextStyle(color: Colors.green)),
-                        ],
-                      ),
-                    ),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Manage your plan"),
-                  ]),
-                  buildCard([
-                    buildTile("Messages"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Help Center"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Communities"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Contact Us"),
-                  ]),
-                  buildCard([
-                    buildTile("Permission list"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Privacy Policy"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Terms of services"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("About Us"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-
-                    // Show User ID tile above About Us
-                    buildTile(
-                      "User ID: ${UserManager.currentUserId ?? 'Loading...'}",
-                    ),
-                  ]),
-                  ClerkAuthBuilder(
-                    signedInBuilder: (context, authState) {
-                      return Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Center(
-                          child: SizedBox(
-                            width: 150,
-                            height: 40,
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                await authState.signOut();
-                                Navigator.of(context).pop();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Signed out')),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: Text(
-                                "Sign out",
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                    signedOutBuilder: (context, authState) {
-                      return Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Center(
-                          child: TextButton(
-                            onPressed: () => showLoginDialog(context),
-                            child: Text(
-                              "Login",
-                              style: TextStyle(color: Colors.green),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildCard(List<Widget> children) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.grey.shade900,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(children: children),
-      ),
-    );
-  }
-
-  ListTile buildTile(String title, {Widget? trailing}) {
-    return ListTile(
-      title: Text(title, style: TextStyle(color: Colors.white)),
-      trailing: trailing,
     );
   }
 }

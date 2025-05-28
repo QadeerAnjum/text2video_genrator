@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'dart:async';
 
 class PaymentPage extends StatefulWidget {
   final VoidCallback onClose;
@@ -10,10 +12,122 @@ class PaymentPage extends StatefulWidget {
 }
 
 class _PaymentPageState extends State<PaymentPage> {
-  int selectedPlanIndex = 0; // 0 = Weekly, 1 = Yearly, 2 = Monthly
+  final InAppPurchase _inAppPurchase = InAppPurchase.instance;
+  late StreamSubscription<List<PurchaseDetails>> _subscription;
+
+  bool _available = false;
+  List<ProductDetails> _products = [];
+  bool _purchasePending = false;
+
+  final List<String> _productIds = ['weekly_plan_id', 'yearly_plan_id'];
+  // Replace these with your actual product IDs from Play Store / App Store
+
+  @override
+  void initState() {
+    final purchaseUpdated = _inAppPurchase.purchaseStream;
+    _subscription = purchaseUpdated.listen(
+      _listenToPurchaseUpdated,
+      onDone: () {
+        _subscription.cancel();
+      },
+      onError: (error) {
+        // handle error here.
+      },
+    );
+    _initStoreInfo();
+    super.initState();
+  }
+
+  Future<void> _initStoreInfo() async {
+    _available = await _inAppPurchase.isAvailable();
+    if (!_available) {
+      setState(() {
+        _products = [];
+      });
+      return;
+    }
+    ProductDetailsResponse response = await _inAppPurchase.queryProductDetails(
+      _productIds.toSet(),
+    );
+    if (response.error != null) {
+      // handle error
+    }
+    if (response.productDetails.isEmpty) {
+      // no products found
+    }
+    setState(() {
+      _products = response.productDetails;
+    });
+    print("Store available: $_available");
+    print("Found ${response.productDetails.length} products");
+    for (var product in response.productDetails) {
+      print("Product: ${product.id} - ${product.title} - ${product.price}");
+    }
+  }
+
+  void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
+    for (var purchaseDetails in purchaseDetailsList) {
+      if (purchaseDetails.status == PurchaseStatus.purchased) {
+        _verifyPurchase(purchaseDetails);
+      } else if (purchaseDetails.status == PurchaseStatus.error) {
+        _handleError(purchaseDetails.error!);
+      }
+      if (purchaseDetails.pendingCompletePurchase) {
+        _inAppPurchase.completePurchase(purchaseDetails);
+      }
+    }
+  }
+
+  void _verifyPurchase(PurchaseDetails purchaseDetails) {
+    // TODO: Verify purchase with your server or receipt validation
+    setState(() {
+      _purchasePending = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Purchase successful: ${purchaseDetails.productID}'),
+      ),
+    );
+    widget.onClose(); // close payment page after success
+  }
+
+  void _handleError(IAPError error) {
+    setState(() {
+      _purchasePending = false;
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Purchase error: ${error.message}')));
+  }
+
+  void _buyProduct(ProductDetails productDetails) {
+    final purchaseParam = PurchaseParam(productDetails: productDetails);
+    _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+    setState(() {
+      _purchasePending = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (!_available) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            'Store not available',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Column(
@@ -21,7 +135,7 @@ class _PaymentPageState extends State<PaymentPage> {
           // Header Section
           Container(
             width: double.infinity,
-            height: 200, // Set a specific height for background visibility
+            height: 200,
             padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 1,
               bottom: 1,
@@ -29,9 +143,7 @@ class _PaymentPageState extends State<PaymentPage> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Background Image
                 Image.asset('assets/image.png', fit: BoxFit.cover),
-                // Close button
                 Positioned(
                   top: 0,
                   right: 16,
@@ -43,7 +155,6 @@ class _PaymentPageState extends State<PaymentPage> {
               ],
             ),
           ),
-          // Bottom Scrollable Content
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -64,59 +175,32 @@ class _PaymentPageState extends State<PaymentPage> {
                       ),
                     ),
                     SizedBox(height: 16),
-                    _buildFeature("Unlimited Text to Video Generations"),
-                    _buildFeature("Unlimited HD Exports"),
                     _buildFeature("No Watermarks"),
                     _buildFeature("Ads - Free"),
                     SizedBox(height: 30),
-                    _buildPlanCard(
-                      index: 0,
-                      title: "Weekly Plan",
-                      price: "Rs 1,950.00/Weekly",
-                      oldPrice: "Rs2632",
-                      discount: "Save 35%",
-                      isPopular: true,
-                      trial: true,
-                    ),
-                    _buildPlanCard(
-                      index: 1,
-                      title: "Yearly Plan",
-                      price: "Rs 12,700.00/Yearly",
-                      oldPrice: "Rs22225",
-                      discount: "Save 75%",
-                    ),
-                    _buildPlanCard(
-                      index: 2,
-                      title: "Monthly Plan",
-                      price: "Rs 2,950.00/Month",
-                      oldPrice: "Rs4572",
-                      discount: "Save 55%",
-                    ),
-                    SizedBox(height: 30),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // Start trial
+                    ..._products.map((product) {
+                      final bool isWeekly = product.id == 'weekly_plan_id';
+                      return _buildPlanCard(
+                        title: isWeekly ? "Weekly Plan" : "Yearly Plan",
+                        price: product.price,
+                        coins: isWeekly ? 500 : 5000,
+                        discount: isWeekly ? null : "Save 70%",
+                        isPopular: isWeekly,
+                        onTap: () {
+                          if (!_purchasePending) {
+                            _buyProduct(product);
+                          }
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 255, 183, 0),
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                        child: Text(
-                          "3 Days Free Trial",
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
+                      );
+                    }).toList(),
+                    if (_purchasePending)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 20),
+                        child: Center(child: CircularProgressIndicator()),
                       ),
-                    ),
                     SizedBox(height: 20),
                     Text(
-                      "After 3-days free trial period you'll be charged Rs 1,950.00/Weekly unless you cancel before the trial expired. This Subscription is Auto-Renewable. Secured by PlayStore",
+                      "Subscription is auto-renewable and you will be charged unless you cancel before the renewal date. Secured by PlayStore.",
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
@@ -125,7 +209,7 @@ class _PaymentPageState extends State<PaymentPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          "Term & Conditions",
+                          "Terms & Conditions",
                           style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                         SizedBox(width: 20),
@@ -159,35 +243,28 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   Widget _buildPlanCard({
-    required int index,
     required String title,
     required String price,
-    required String oldPrice,
-    required String discount,
+    required int coins,
+    String? discount,
     bool isPopular = false,
-    bool trial = false,
+    required VoidCallback onTap,
   }) {
-    final bool isSelected = selectedPlanIndex == index;
-
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          selectedPlanIndex = index;
-        });
-      },
+      onTap: onTap,
       child: Container(
         margin: EdgeInsets.symmetric(vertical: 8),
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient:
-              isSelected
+              isPopular
                   ? LinearGradient(
                     colors: [Color(0xFFFF8C00), Color(0xFFDAA520)],
                   )
                   : null,
-          color: isSelected ? null : Colors.grey[900],
+          color: isPopular ? null : Colors.grey[900],
           borderRadius: BorderRadius.circular(16),
-          border: isSelected ? null : Border.all(color: Colors.white24),
+          border: isPopular ? null : Border.all(color: Colors.white24),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,8 +290,7 @@ class _PaymentPageState extends State<PaymentPage> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isPopular ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
                 Text(
@@ -227,29 +303,30 @@ class _PaymentPageState extends State<PaymentPage> {
                 ),
               ],
             ),
-            SizedBox(height: 4),
+            SizedBox(height: 8),
             Row(
               children: [
                 Text(
-                  oldPrice,
-                  style: TextStyle(
-                    color: Colors.white60,
-                    decoration: TextDecoration.lineThrough,
-                  ),
+                  "$coins Coins",
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
-                SizedBox(width: 8),
-                Text(discount, style: TextStyle(color: Colors.greenAccent)),
-                if (trial) ...[
-                  SizedBox(width: 8),
-                  Text(
-                    "3 Days Free Trial",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                SizedBox(width: 12),
+                if (discount != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.cyan,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      discount,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
                     ),
                   ),
-                ],
               ],
             ),
           ],
