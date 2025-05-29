@@ -26,5 +26,7 @@ buildscript {
     }
     dependencies {
     classpath("com.google.gms:google-services:4.4.2") // ✅ Correct Kotlin DSL
+    classpath("com.android.tools.build:gradle:7.4.1") // ✅ Kotlin syntax
+
 }
 }

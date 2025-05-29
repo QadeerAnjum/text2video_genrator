@@ -47,7 +47,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
   }
 
   Future<void> ensureUserExists() async {
-    final url = Uri.parse('http://192.168.100.109:8000/create_user');
+    final url = Uri.parse('http://192.168.100.202:8000/create_user');
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -80,7 +80,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     try {
       await ensureUserExists();
 
-      final url = Uri.parse('http://192.168.100.109:8000/generate_video');
+      final url = Uri.parse('http://192.168.100.202:8000/generate_video');
       final int durationSec = int.parse(selectedDuration.replaceAll('s', ''));
 
       final response = await http.post(

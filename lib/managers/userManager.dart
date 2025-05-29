@@ -30,7 +30,7 @@ class UserManager {
 
     if (Platform.isAndroid) {
       AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      String? androidId = androidInfo.data['androidId'] as String?;
+      String? androidId = androidInfo.id; // Correct way
       return androidId ?? "unknown_device_id";
     } else if (Platform.isIOS) {
       IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
