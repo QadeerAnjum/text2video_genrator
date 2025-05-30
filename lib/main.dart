@@ -7,8 +7,9 @@ import 'package:text2video_app/src/features/core/Screens/Text2VideoUI.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:text2video_app/src/features/core/Screens/paymentPage.dart';
 
-void main() {
+Future<void> main() async {
   runApp(Text2VideoApp());
+  await UserManager.getUserID();
 }
 
 class Text2VideoApp extends StatelessWidget {

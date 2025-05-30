@@ -2,16 +2,45 @@ import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:text2video_app/managers/userManager.dart';
 import 'package:text2video_app/src/features/core/Screens/Paymentpage.dart';
+import 'package:text2video_app/src/features/core/Screens/Text2VideoUI.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   final void Function(BuildContext) showLoginDialog;
-
   const AppDrawer({required this.showLoginDialog});
+
+  @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  String androidId = "Loading...";
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeviceId();
+  }
+
+  Future<void> _initDeviceId() async {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfo.androidInfo;
+      setState(() {
+        androidId = androidInfo.id; // This is the Android ID
+      });
+    } else {
+      setState(() {
+        androidId = "Not an Android device";
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Color(0xFF1E1E1E),
+      backgroundColor: const Color(0xFF1E1E1E),
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -159,9 +188,7 @@ class AppDrawer extends StatelessWidget {
                     Divider(color: Colors.grey.shade800, thickness: 0.2),
 
                     // Show User ID tile above About Us
-                    buildTile(
-                      "User ID: ${UserManager.currentUserId ?? 'Loading...'}",
-                    ),
+                    buildTile("User ID: $androidId"),
                   ]),
                   ClerkAuthBuilder(
                     signedInBuilder: (context, authState) {
@@ -241,4 +268,22 @@ class AppDrawer extends StatelessWidget {
       trailing: trailing,
     );
   }
+}
+
+void showLoginDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder:
+        (_) => Dialog(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SizedBox(
+                width: constraints.maxWidth < 400 ? constraints.maxWidth : 400,
+                height: 500,
+                child: const ClerkAuthentication(),
+              );
+            },
+          ),
+        ),
+  );
 }

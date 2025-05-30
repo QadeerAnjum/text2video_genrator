@@ -182,25 +182,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     }
   }
 
-  void _showLoginDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (_) => Dialog(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SizedBox(
-                  width:
-                      constraints.maxWidth < 400 ? constraints.maxWidth : 400,
-                  height: 500,
-                  child: const ClerkAuthentication(),
-                );
-              },
-            ),
-          ),
-    );
-  }
-
   Widget _dropOption(String text, {bool selected = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
@@ -296,7 +277,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
           ),
         ],
       ),
-      drawer: AppDrawer(showLoginDialog: _showLoginDialog),
+      drawer: AppDrawer(showLoginDialog: showLoginDialog),
       body: SafeArea(
         child: Stack(
           children: [
