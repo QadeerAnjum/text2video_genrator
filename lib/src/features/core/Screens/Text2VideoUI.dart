@@ -1,8 +1,9 @@
+import 'package:Motion_AI/src/features/core/Screens/appBar.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:http/http.dart' as http;
-import 'package:text2video_app/src/features/core/Screens/appDrawer.dart';
+import 'package:Motion_AI/src/features/core/Screens/appDrawer.dart';
 import 'dart:convert';
 import 'package:video_player/video_player.dart';
 import 'package:path_provider/path_provider.dart';
@@ -237,46 +238,8 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          'Text to Video',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: DropdownButton<String>(
-              value: selectedModel,
-              dropdownColor: Colors.grey[900],
-              style: const TextStyle(color: Colors.white),
-              underline: Container(),
-              items:
-                  ['MINIMAX v1', 'MINIMAX v2']
-                      .map(
-                        (item) => DropdownMenuItem<String>(
-                          value: item,
-                          child: Text(item),
-                        ),
-                      )
-                      .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    selectedModel = value;
-                  });
-                }
-              },
-            ),
-          ),
-        ],
-      ),
+      appBar: CustomAppBar(title: 'Motion AI'),
+
       drawer: AppDrawer(showLoginDialog: showLoginDialog),
       body: SafeArea(
         child: Stack(
@@ -289,6 +252,19 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Text(
+                          'Text To Video Generation',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
                       const SizedBox(height: 16),
                       Text(
                         'Prompt',

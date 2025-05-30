@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:text2video_app/managers/userManager.dart';
-import 'package:text2video_app/src/features/core/Screens/Text2VideoUI.dart';
+import 'package:Motion_AI/managers/userManager.dart';
+import 'package:Motion_AI/src/features/core/Screens/Text2VideoUI.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:text2video_app/src/features/core/Screens/paymentPage.dart';
+import 'package:Motion_AI/src/features/core/Screens/paymentPage.dart';
 
 Future<void> main() async {
   runApp(Text2VideoApp());

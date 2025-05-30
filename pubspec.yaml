@@ -1,4 +1,4 @@
-name: text2video_app
+name: Motion_AI
 description: "A new Flutter project."
 
 publish_to: "none"
@@ -49,4 +49,4 @@ flutter:
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/text2video.png" # replace with your logo path
+  image_path: "assets/logo-videoapp.png" # replace with your logo path

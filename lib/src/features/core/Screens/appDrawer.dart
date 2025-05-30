@@ -1,8 +1,10 @@
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:text2video_app/managers/userManager.dart';
-import 'package:text2video_app/src/features/core/Screens/Paymentpage.dart';
-import 'package:text2video_app/src/features/core/Screens/Text2VideoUI.dart';
+import 'package:Motion_AI/managers/userManager.dart';
+import 'package:Motion_AI/src/features/core/Screens/Paymentpage.dart';
+import 'package:Motion_AI/src/features/core/Screens/Text2VideoUI.dart';
+import 'package:Motion_AI/src/features/core/Screens/Image2Video.dart';
+
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
 
@@ -44,68 +46,28 @@ class _AppDrawerState extends State<AppDrawer> {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          ClerkAuthBuilder(
-            signedInBuilder: (context, authState) {
-              final user = authState.user;
-              final userEmail =
-                  (user?.emailAddresses != null &&
-                          user!.emailAddresses!.isNotEmpty)
-                      ? user.emailAddresses!.first.emailAddress
-                      : "No Email";
-
-              final userName =
-                  user?.firstName != null && user!.firstName!.isNotEmpty
-                      ? "${user.firstName} ${user.lastName ?? ''}".trim()
-                      : user?.username ?? "No Name";
-
-              return UserAccountsDrawerHeader(
-                decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
-                accountName: Text(userName),
-                accountEmail: Text(userEmail),
-                currentAccountPicture: CircleAvatar(
-                  backgroundColor: Colors.grey,
-                  backgroundImage:
-                      user?.imageUrl != null
-                          ? NetworkImage(user!.imageUrl!)
-                          : null,
-                  child:
-                      user?.imageUrl == null
-                          ? Icon(Icons.person, size: 40)
-                          : null,
+          const SizedBox(height: 40),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Motion AI",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              );
-            },
-            signedOutBuilder: (context, authState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  UserAccountsDrawerHeader(
-                    decoration: BoxDecoration(color: Color(0xFF1E1E1E)),
-                    accountName: Text("Guest"),
-                    accountEmail: Text("Please log in"),
-                    currentAccountPicture: CircleAvatar(
-                      backgroundColor: Colors.grey,
-                      child: Icon(Icons.person_outline, size: 40),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: ElevatedButton.icon(
-                      icon: Icon(Icons.login, color: Colors.white),
-                      label: Text(
-                        "Login",
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 233, 175, 3),
-                      ),
-                      onPressed: () => showLoginDialog(context),
-                    ),
-                  ),
-                ],
-              );
-            },
+                SizedBox(height: 4),
+                Text(
+                  "AI Video Generator",
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                SizedBox(height: 20),
+              ],
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -169,21 +131,67 @@ class _AppDrawerState extends State<AppDrawer> {
                     buildTile("Manage your plan"),
                   ]),
                   buildCard([
-                    buildTile("Messages"),
+                    ListTile(
+                      title: Text(
+                        "Text To Video",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      trailing: Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => TextToVideoUI()),
+                        );
+                      },
+                    ),
                     Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Help Center"),
+
+                    ListTile(
+                      title: Text(
+                        "Image To Video",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      trailing: Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ImageToVideoScreen(),
+                          ),
+                        );
+                      },
+                    ),
                     Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Communities"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Contact Us"),
+
+                    ListTile(
+                      title: Text(
+                        "Rate Us",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      trailing: Icon(Icons.star, color: Colors.amber),
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(20),
+                            ),
+                          ),
+                          backgroundColor: Colors.grey[900],
+                          builder: (_) => _buildRateUsBottomSheet(),
+                        );
+                      },
+                    ),
                   ]),
                   buildCard([
-                    buildTile("Permission list"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Privacy Policy"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
-                    buildTile("Terms of services"),
-                    Divider(color: Colors.grey.shade800, thickness: 0.2),
                     buildTile("About Us"),
                     Divider(color: Colors.grey.shade800, thickness: 0.2),
 
@@ -246,6 +254,61 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRateUsBottomSheet() {
+    int selectedStars = 0;
+
+    return StatefulBuilder(
+      builder: (context, setModalState) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Rate Us",
+                style: TextStyle(fontSize: 20, color: Colors.white),
+              ),
+              SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (index) {
+                  return IconButton(
+                    icon: Icon(
+                      index < selectedStars ? Icons.star : Icons.star_border,
+                      color: Colors.amber,
+                      size: 32,
+                    ),
+                    onPressed: () {
+                      setModalState(() => selectedStars = index + 1);
+                    },
+                  );
+                }),
+              ),
+              SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Thanks for rating us $selectedStars stars!',
+                      ),
+                    ),
+                  );
+                },
+                child: Text("Submit"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  foregroundColor: Colors.black,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
