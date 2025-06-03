@@ -1,7 +1,5 @@
 name: Motion_AI
-description: "A new Flutter project."
-
-publish_to: "none"
+description: A new Flutter project.
 
 version: 1.0.0+1
 
@@ -11,42 +9,64 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1
 
-  url_launcher: ^6.1.7
+  # UI & Icons
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  font_awesome_flutter: ^10.7.0
+
+  # Video
+  video_player: ^2.7.0
+  chewie: ^1.7.1
+
+  # Authentication
   clerk_flutter: ^0.0.9-beta
   google_sign_in: ^6.2.1
-  video_player: ^2.7.0
-  font_awesome_flutter: ^10.7.0
-  google_fonts: ^6.2.1
+
+  # Storage & Files
   shared_preferences: ^2.1.1
-  uuid: ^3.0.7
   path_provider: ^2.0.15
   permission_handler: ^12.0.0+1
   open_filex: ^4.0.2
-  cupertino_icons: ^1.0.8
+
+  # Payments
   pay: ^3.2.1
   in_app_purchase: ^3.0.7
+  provider: ^6.0.5
+
+  # Utilities
+  url_launcher: ^6.1.7
+  uuid: ^3.0.7
   device_info_plus: ^10.0.0
   dio: ^5.3.3
+  image_picker: ^1.1.2
+
+  # Launcher Icons
+  flutter_launcher_icons: ^0.13.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.1
 
+  # Native Splash Screen
   flutter_native_splash: ^2.3.5
-
-flutter_native_splash:
-  color: "#ffffff" # Background color
-  android: true
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/image.png
+    - assets/trasns-videoapp.png
+    - assets/videos/1.mp4
+    - assets/videos/2.mp4
+    - assets/videos/3.mp4
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: assets/trasns-videoapp.png
+
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/logo-videoapp.png" # replace with your logo path
+  image_path: assets/logo-videoapp.png

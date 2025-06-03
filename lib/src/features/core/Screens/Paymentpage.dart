@@ -16,62 +16,103 @@ class _PaymentPageState extends State<PaymentPage> {
   late StreamSubscription<List<PurchaseDetails>> _subscription;
 
   bool _available = false;
+  bool _loading = true;
   List<ProductDetails> _products = [];
   bool _purchasePending = false;
+  String? _queryProductError;
 
   final List<String> _productIds = ['weekly_plan_id', 'yearly_plan_id'];
-  // Replace these with your actual product IDs from Play Store / App Store
 
   @override
   void initState() {
+    super.initState();
+
     final purchaseUpdated = _inAppPurchase.purchaseStream;
     _subscription = purchaseUpdated.listen(
       _listenToPurchaseUpdated,
-      onDone: () {
-        _subscription.cancel();
-      },
+      onDone: () => _subscription.cancel(),
       onError: (error) {
-        // handle error here.
+        // Handle error here.
+        debugPrint('Purchase Stream error: $error');
       },
     );
+
     _initStoreInfo();
-    super.initState();
   }
 
   Future<void> _initStoreInfo() async {
-    _available = await _inAppPurchase.isAvailable();
+    final isAvailable = await _inAppPurchase.isAvailable();
+    if (!mounted) return;
+
+    setState(() {
+      _available = isAvailable;
+      _loading = false;
+    });
+
     if (!_available) {
       setState(() {
+        _products = [];
+        _queryProductError = 'Store not available';
+      });
+      return;
+    }
+
+    final response = await _inAppPurchase.queryProductDetails(
+      _productIds.toSet(),
+    );
+    if (!mounted) return;
+
+    if (response.error != null) {
+      setState(() {
+        _queryProductError = response.error!.message;
         _products = [];
       });
       return;
     }
-    ProductDetailsResponse response = await _inAppPurchase.queryProductDetails(
-      _productIds.toSet(),
-    );
-    if (response.error != null) {
-      // handle error
-    }
+
     if (response.productDetails.isEmpty) {
-      // no products found
+      setState(() {
+        _queryProductError = 'No products found';
+        _products = [];
+      });
+      return;
     }
+
     setState(() {
       _products = response.productDetails;
+      _queryProductError = null;
     });
-    print("Store available: $_available");
-    print("Found ${response.productDetails.length} products");
-    for (var product in response.productDetails) {
-      print("Product: ${product.id} - ${product.title} - ${product.price}");
+
+    // Debug logs
+    debugPrint("Store available: $_available");
+    debugPrint("Found ${_products.length} products");
+    for (var product in _products) {
+      debugPrint(
+        "Product: ${product.id} - ${product.title} - ${product.price}",
+      );
     }
   }
 
   void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) {
-    for (var purchaseDetails in purchaseDetailsList) {
-      if (purchaseDetails.status == PurchaseStatus.purchased) {
-        _verifyPurchase(purchaseDetails);
-      } else if (purchaseDetails.status == PurchaseStatus.error) {
-        _handleError(purchaseDetails.error!);
+    for (final purchaseDetails in purchaseDetailsList) {
+      switch (purchaseDetails.status) {
+        case PurchaseStatus.pending:
+          setState(() => _purchasePending = true);
+          break;
+
+        case PurchaseStatus.purchased:
+        case PurchaseStatus.restored:
+          _verifyPurchase(purchaseDetails);
+          break;
+
+        case PurchaseStatus.error:
+          _handleError(purchaseDetails.error!);
+          break;
+
+        default:
+          break;
       }
+
       if (purchaseDetails.pendingCompletePurchase) {
         _inAppPurchase.completePurchase(purchaseDetails);
       }
@@ -79,16 +120,19 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   void _verifyPurchase(PurchaseDetails purchaseDetails) {
-    // TODO: Verify purchase with your server or receipt validation
+    // TODO: Implement server-side verification or receipt validation here
+
     setState(() {
       _purchasePending = false;
     });
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Purchase successful: ${purchaseDetails.productID}'),
       ),
     );
-    widget.onClose(); // close payment page after success
+
+    widget.onClose(); // Close the payment page on success
   }
 
   void _handleError(IAPError error) {
@@ -102,10 +146,19 @@ class _PaymentPageState extends State<PaymentPage> {
 
   void _buyProduct(ProductDetails productDetails) {
     final purchaseParam = PurchaseParam(productDetails: productDetails);
-    _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
     setState(() {
       _purchasePending = true;
     });
+
+    _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+  }
+
+  void _restorePurchases() {
+    setState(() {
+      _purchasePending = true;
+    });
+
+    _inAppPurchase.restorePurchases();
   }
 
   @override
@@ -116,13 +169,20 @@ class _PaymentPageState extends State<PaymentPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     if (!_available) {
       return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
           child: Text(
-            'Store not available',
-            style: TextStyle(color: Colors.white),
+            _queryProductError ?? 'Store not available',
+            style: const TextStyle(color: Colors.white),
           ),
         ),
       );
@@ -149,24 +209,29 @@ class _PaymentPageState extends State<PaymentPage> {
                   right: 16,
                   child: GestureDetector(
                     onTap: widget.onClose,
-                    child: Icon(Icons.close, color: Colors.white, size: 28),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+
           Expanded(
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       "AI Text to Video PRO",
                       style: TextStyle(
                         color: Colors.white,
@@ -174,10 +239,20 @@ class _PaymentPageState extends State<PaymentPage> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     _buildFeature("No Watermarks"),
                     _buildFeature("Ads - Free"),
-                    SizedBox(height: 30),
+                    const SizedBox(height: 30),
+
+                    if (_products.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Text(
+                          _queryProductError ?? 'No products available',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+
                     ..._products.map((product) {
                       final bool isWeekly = product.id == 'weekly_plan_id';
                       return _buildPlanCard(
@@ -186,28 +261,51 @@ class _PaymentPageState extends State<PaymentPage> {
                         coins: isWeekly ? 500 : 5000,
                         discount: isWeekly ? null : "Save 70%",
                         isPopular: isWeekly,
-                        onTap: () {
-                          if (!_purchasePending) {
-                            _buyProduct(product);
-                          }
-                        },
+                        onTap:
+                            _purchasePending
+                                ? null
+                                : () => _buyProduct(product),
                       );
                     }).toList(),
+
                     if (_purchasePending)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 20),
+                      const Padding(
+                        padding: EdgeInsets.only(top: 20),
                         child: Center(child: CircularProgressIndicator()),
                       ),
-                    SizedBox(height: 20),
+
+                    const SizedBox(height: 20),
+
                     Text(
                       "Subscription is auto-renewable and you will be charged unless you cancel before the renewal date. Secured by PlayStore.",
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
                       textAlign: TextAlign.center,
                     ),
-                    SizedBox(height: 20),
+
+                    const SizedBox(height: 20),
+
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        TextButton(
+                          onPressed:
+                              _purchasePending ? null : _restorePurchases,
+                          child: const Text(
+                            "Restore Purchases",
+                            style: TextStyle(color: Colors.cyanAccent),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
                         Text(
                           "Terms & Conditions",
                           style: TextStyle(color: Colors.white70, fontSize: 12),
@@ -234,9 +332,9 @@ class _PaymentPageState extends State<PaymentPage> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(Icons.check, color: Colors.white, size: 18),
-          SizedBox(width: 8),
-          Text(text, style: TextStyle(color: Colors.white)),
+          const Icon(Icons.check, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Text(text, style: const TextStyle(color: Colors.white)),
         ],
       ),
     );
@@ -248,17 +346,17 @@ class _PaymentPageState extends State<PaymentPage> {
     required int coins,
     String? discount,
     bool isPopular = false,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 8),
-        padding: EdgeInsets.all(16),
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient:
               isPopular
-                  ? LinearGradient(
+                  ? const LinearGradient(
                     colors: [Color(0xFFFF8C00), Color(0xFFDAA520)],
                   )
                   : null,
@@ -271,17 +369,17 @@ class _PaymentPageState extends State<PaymentPage> {
           children: [
             if (isPopular)
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.cyan,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
+                child: const Text(
                   "Popular",
                   style: TextStyle(fontSize: 12, color: Colors.black),
                 ),
               ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -295,7 +393,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 ),
                 Text(
                   price,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -303,24 +401,27 @@ class _PaymentPageState extends State<PaymentPage> {
                 ),
               ],
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Text(
                   "$coins Coins",
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 if (discount != null)
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.cyan,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       discount,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                         color: Colors.black,

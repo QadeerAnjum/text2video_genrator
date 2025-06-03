@@ -1,9 +1,13 @@
+import 'package:Motion_AI/managers/userManager.dart';
+import 'package:Motion_AI/src/features/core/Screens/CreditsProvider.dart';
 import 'package:Motion_AI/src/features/core/Screens/appBar.dart';
+import 'package:Motion_AI/src/features/core/Screens/creditsPage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:clerk_flutter/clerk_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:Motion_AI/src/features/core/Screens/appDrawer.dart';
+import 'package:provider/provider.dart';
 import 'dart:convert';
 import 'package:video_player/video_player.dart';
 import 'package:path_provider/path_provider.dart';
@@ -32,13 +36,17 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
   String selectedAspectRatio = '16:9'; // options: '16:9' or '1:1'
   String selectedModel = 'MINIMAX v1'; // options: 'MINIMAX v1' or 'MINIMAX v2'
 
+  String? userId;
   bool isLoading = false;
-
-  final String userId =
-      "dummy_user_123"; // TODO: replace with actual user ID from auth
 
   String? generatedVideoUrl;
   VideoPlayerController? _videoController;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchUserId();
+  }
 
   @override
   void dispose() {
@@ -47,8 +55,25 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     super.dispose();
   }
 
+  Future<void> fetchUserId() async {
+    try {
+      final id = await UserManager.getUserID();
+      print("User ID inside TextToVideoUI: $id");
+
+      setState(() {
+        userId = id;
+        isLoading = false;
+      });
+    } catch (e) {
+      print("Error fetching user ID: $e");
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
   Future<void> ensureUserExists() async {
-    final url = Uri.parse('http://192.168.100.202:8000/create_user');
+    final url = Uri.parse('http://192.168.100.123:8000/create_user');
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -81,7 +106,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     try {
       await ensureUserExists();
 
-      final url = Uri.parse('http://192.168.100.202:8000/generate_video');
+      final url = Uri.parse('http://192.168.100.123:8000/generate_video');
       final int durationSec = int.parse(selectedDuration.replaceAll('s', ''));
 
       final response = await http.post(
@@ -187,9 +212,12 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       decoration: BoxDecoration(
-        color: selected ? Colors.blueAccent : Colors.transparent,
+        color:
+            selected
+                ? const Color.fromARGB(255, 97, 97, 98)
+                : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: Colors.green),
       ),
       child: Text(
         text,
@@ -205,9 +233,12 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
       decoration: BoxDecoration(
-        color: selected ? Colors.blueAccent : Colors.transparent,
+        color:
+            selected
+                ? const Color.fromARGB(255, 97, 97, 98)
+                : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: Colors.green),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -236,11 +267,14 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     final videoDuration = _videoController?.value.duration ?? Duration.zero;
     final videoPosition = _videoController?.value.position ?? Duration.zero;
 
+    // Access credits from provider here:
+    final credits = context.watch<CreditsProvider>().credits;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: CustomAppBar(title: 'Motion AI'),
 
-      drawer: AppDrawer(showLoginDialog: showLoginDialog),
+      drawer: AppDrawer(),
       body: SafeArea(
         child: Stack(
           children: [
@@ -518,6 +552,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                 ),
               ),
             ),
+
             Positioned(
               bottom: 24,
               left: 16,
@@ -525,7 +560,30 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
               child: SizedBox(
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: isLoading ? null : generateVideo,
+                  onPressed:
+                      isLoading
+                          ? null
+                          : () {
+                            if (credits < 100) {
+                              // Navigate to CreditsPage if credits are insufficient
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const CreditsPage(),
+                                ),
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "You need at least 100 credits to generate a video.",
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            } else {
+                              generateVideo();
+                            }
+                          },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     shape: RoundedRectangleBorder(

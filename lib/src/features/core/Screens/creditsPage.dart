@@ -1,0 +1,196 @@
+import 'package:Motion_AI/src/features/core/Screens/CreditsProvider.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:Motion_AI/src/features/core/Screens/creditButton.dart';
+
+class CreditsPage extends StatefulWidget {
+  const CreditsPage({Key? key}) : super(key: key);
+
+  @override
+  State<CreditsPage> createState() => _CreditsPageState();
+}
+
+class _CreditsPageState extends State<CreditsPage> {
+  int currentCredits = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCredits();
+  }
+
+  Future<void> _loadCredits() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedCredits = prefs.getInt('credits') ?? 0;
+    setState(() {
+      currentCredits = savedCredits;
+    });
+  }
+
+  void _buyCredits(BuildContext context, int amount, int creditsToAdd) async {
+    // Here you can trigger subscription purchase via in_app_purchase (step below)
+    // For now just add credits manually (simulate subscription reward)
+    await context.read<CreditsProvider>().addCredits(creditsToAdd);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Purchased $creditsToAdd credits!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Widget _creditCard(
+    BuildContext context,
+    int amount,
+    int credits,
+    double cardWidth,
+  ) {
+    return GestureDetector(
+      onTap: () => _buyCredits(context, amount, credits),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withOpacity(0.15),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.local_fire_department,
+              color: Colors.green,
+              size: 28,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$credits Credits',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '\$$amount',
+                    style: GoogleFonts.poppins(
+                      color: Colors.green,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Buy',
+                style: GoogleFonts.poppins(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    const spacing = 8.0;
+    const totalCards = 3;
+
+    final totalSpacing = spacing * (totalCards - 1) + 40;
+    final cardWidth = ((screenWidth - totalSpacing) / totalCards).clamp(
+      100.0,
+      200.0,
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          'Buy Credits',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: CreditsButton(
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Credits button tapped"),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(color: Colors.green, height: 1),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Buy More Points Here To Generate Videos ',
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 50),
+            Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              alignment: WrapAlignment.center,
+              children: [
+                _creditCard(context, 5, 500, cardWidth),
+                _creditCard(context, 50, 5000, cardWidth),
+                _creditCard(context, 100, 10000, cardWidth),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

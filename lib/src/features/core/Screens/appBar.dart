@@ -1,18 +1,22 @@
+import 'package:Motion_AI/src/features/core/Screens/creditButton.dart';
+import 'package:Motion_AI/src/features/core/Screens/creditsPage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final int credits;
+  final VoidCallback? onCreditsTap; // Add this to handle tap
 
   const CustomAppBar({
     Key? key,
     required this.title,
-    this.credits = 166, // Default credits
+    this.credits = 200,
+    this.onCreditsTap, // Accept tap handler
   }) : super(key: key);
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 1); // +1 for bottom border
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 1);
 
   @override
   Widget build(BuildContext context) {
@@ -31,27 +35,13 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.green, width: 1),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.local_fire_department, color: Colors.green),
-                const SizedBox(width: 6),
-                Text(
-                  credits.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+          child: CreditsButton(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => CreditsPage()),
+              );
+            },
           ),
         ),
       ],

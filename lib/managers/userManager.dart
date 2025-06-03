@@ -42,7 +42,7 @@ class UserManager {
   }
 
   static Future<void> createUserInDatabase(String userId) async {
-    const String backendBase = "http://192.168.100.109:8000";
+    const String backendBase = "http://192.168.100.123:8000";
     final Uri uri = Uri.parse('$backendBase/create_user');
 
     try {
