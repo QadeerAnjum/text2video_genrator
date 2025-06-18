@@ -30,16 +30,18 @@ class _CreditsPageState extends State<CreditsPage> {
   }
 
   void _buyCredits(BuildContext context, int amount, int creditsToAdd) async {
-    // Here you can trigger subscription purchase via in_app_purchase (step below)
-    // For now just add credits manually (simulate subscription reward)
-    await context.read<CreditsProvider>().addCredits(creditsToAdd);
+    final provider = Provider.of<CreditsProvider>(context, listen: false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Purchased $creditsToAdd credits!'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    if (!provider.hasSubscribed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You need to purchase a plan to get credits.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } else {
+      // Optional future logic for direct credit purchase after subscription
+    }
   }
 
   Widget _creditCard(
@@ -124,6 +126,9 @@ class _CreditsPageState extends State<CreditsPage> {
     final screenWidth = MediaQuery.of(context).size.width;
     const spacing = 8.0;
     const totalCards = 3;
+
+    final creditsProvider = Provider.of<CreditsProvider>(context);
+    final currentCredits = creditsProvider.credits;
 
     final totalSpacing = spacing * (totalCards - 1) + 40;
     final cardWidth = ((screenWidth - totalSpacing) / totalCards).clamp(

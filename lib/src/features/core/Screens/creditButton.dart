@@ -9,13 +9,13 @@ class CreditsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    int credits = context.watch<CreditsProvider>().credits;
+    final creditsProvider = Provider.of<CreditsProvider>(context);
 
     return OutlinedButton.icon(
       onPressed: onTap,
       icon: const Icon(Icons.local_fire_department, color: Colors.green),
       label: Text(
-        '$credits',
+        '${creditsProvider.credits}',
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w600,

@@ -1,6 +1,11 @@
+import 'package:Motion_AI/src/features/core/Screens/CreditsProvider.dart';
+import 'package:Motion_AI/src/features/core/Screens/Text2VideoUI.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'dart:async';
+
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PaymentPage extends StatefulWidget {
   final VoidCallback onClose;
@@ -119,20 +124,36 @@ class _PaymentPageState extends State<PaymentPage> {
     }
   }
 
-  void _verifyPurchase(PurchaseDetails purchaseDetails) {
-    // TODO: Implement server-side verification or receipt validation here
-
+  void _verifyPurchase(PurchaseDetails purchaseDetails) async {
     setState(() {
       _purchasePending = false;
     });
 
+    final prefs = await SharedPreferences.getInstance();
+    final creditsProvider = context.read<CreditsProvider>();
+
+    // Add credits and update flags
+    await creditsProvider.addCreditsForSubscription(purchaseDetails.productID);
+    await prefs.setBool('hasSubscribed', true);
+    await prefs.setInt('remainingCredits', creditsProvider.credits);
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Purchase successful: ${purchaseDetails.productID}'),
+        content: Text(
+          'Purchased ${purchaseDetails.productID} - Credits Updated!',
+        ),
+        backgroundColor: Colors.green,
       ),
     );
 
-    widget.onClose(); // Close the payment page on success
+    // ✅ Navigate on both purchased and restored
+    if (purchaseDetails.status == PurchaseStatus.purchased ||
+        purchaseDetails.status == PurchaseStatus.restored) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => TextToVideoUI()),
+      );
+    }
   }
 
   void _handleError(IAPError error) {
@@ -161,10 +182,73 @@ class _PaymentPageState extends State<PaymentPage> {
     _inAppPurchase.restorePurchases();
   }
 
+  String getPlanTitle(String productId) {
+    switch (productId) {
+      case 'weekly_plan_id':
+        return "Weekly Plan";
+      case 'yearly_plan_id':
+        return "Yearly Plan";
+      default:
+        return "Premium Plan";
+    }
+  }
+
+  int getPlanCoins(String productId) {
+    switch (productId) {
+      case 'weekly_plan_id':
+        return 500;
+      case 'yearly_plan_id':
+        return 5000;
+      default:
+        return 1000;
+    }
+  }
+
+  String? getDiscountText(String productId) {
+    if (productId == 'yearly_plan_id') return "Save 70%";
+    return null;
+  }
+
+  bool isPlanPopular(String productId) {
+    return productId == 'weekly_plan_id';
+  }
+
   @override
   void dispose() {
     _subscription.cancel();
     super.dispose();
+  }
+
+  Future<bool> checkIfUserHasActiveSubscription() async {
+    final Completer<bool> completer = Completer();
+    final purchaseUpdated = InAppPurchase.instance.purchaseStream;
+
+    final sub = purchaseUpdated.listen((purchaseDetailsList) async {
+      for (final purchase in purchaseDetailsList) {
+        if ((purchase.status == PurchaseStatus.purchased ||
+                purchase.status == PurchaseStatus.restored) &&
+            (purchase.productID == 'weekly_plan_id' ||
+                purchase.productID == 'yearly_plan_id')) {
+          completer.complete(true);
+          return;
+        }
+      }
+
+      // No valid purchases found
+      completer.complete(false);
+    });
+
+    // Trigger restore
+    await InAppPurchase.instance.restorePurchases();
+
+    // Wait max 5 seconds for purchase stream to emit
+    return completer.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        sub.cancel();
+        return false;
+      },
+    );
   }
 
   @override
@@ -208,7 +292,27 @@ class _PaymentPageState extends State<PaymentPage> {
                   top: 0,
                   right: 16,
                   child: GestureDetector(
-                    onTap: widget.onClose,
+                    onTap: () async {
+                      final bool isSubscribed =
+                          await checkIfUserHasActiveSubscription();
+
+                      if (isSubscribed) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (_) => TextToVideoUI()),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "You must subscribe to close this screen.",
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+
                     child: const Icon(
                       Icons.close,
                       color: Colors.white,
@@ -254,13 +358,12 @@ class _PaymentPageState extends State<PaymentPage> {
                       ),
 
                     ..._products.map((product) {
-                      final bool isWeekly = product.id == 'weekly_plan_id';
                       return _buildPlanCard(
-                        title: isWeekly ? "Weekly Plan" : "Yearly Plan",
+                        title: getPlanTitle(product.id),
                         price: product.price,
-                        coins: isWeekly ? 500 : 5000,
-                        discount: isWeekly ? null : "Save 70%",
-                        isPopular: isWeekly,
+                        coins: getPlanCoins(product.id),
+                        discount: getDiscountText(product.id),
+                        isPopular: isPlanPopular(product.id),
                         onTap:
                             _purchasePending
                                 ? null

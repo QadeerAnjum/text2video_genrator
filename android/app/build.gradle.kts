@@ -60,7 +60,7 @@ android {
         applicationId = "com.TrueSofts.text2video"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdkVersion(23)
+        minSdkVersion(21)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

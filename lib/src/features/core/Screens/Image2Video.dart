@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:Motion_AI/managers/userManager.dart';
 import 'package:Motion_AI/src/features/core/Screens/CreditsProvider.dart';
 import 'package:Motion_AI/src/features/core/Screens/appBar.dart';
 import 'package:Motion_AI/src/features/core/Screens/creditsPage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
@@ -25,8 +27,9 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
   File? _selectedImage;
   VideoPlayerController? _videoController;
   bool _isLoading = false;
-  String userId = "user123"; // Replace with actual user ID logic
-
+  String? userId;
+  String? _generatedVideoUrl;
+  bool showGeneratingText = false;
   String? _selectedDuration;
   String? _selectedAspectRatio;
 
@@ -35,6 +38,12 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
 
   File? _downloadedVideoFile;
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserId();
+  }
+
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null) {
@@ -42,8 +51,10 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
     }
   }
 
-  Future<void> ensureUserExists() async {
-    final url = Uri.parse('http://192.168.100.123:8000/create_user');
+  Future<void> _ensureUserExists() async {
+    final url = Uri.parse(
+      'https://motionai-backend-production.up.railway.app/create_user',
+    );
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -65,14 +76,29 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
       final response = await http.get(Uri.parse(videoUrl));
       if (response.statusCode == 200) {
         final bytes = response.bodyBytes;
-        final dir =
-            await getApplicationDocumentsDirectory(); // Internal storage
+
+        final dir = await getApplicationDocumentsDirectory();
         final filePath =
             '${dir.path}/generated_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
         final file = File(filePath);
-        await file.writeAsBytes(bytes);
-        return file;
+
+        await file.writeAsBytes(
+          bytes,
+          flush: true,
+        ); // Ensure it's written to disk
+
+        if (bytes.length <= 100 * 1024) {
+          print("Downloaded file is too small: ${bytes.length} bytes");
+        }
+
+        if (await file.exists()) {
+          return file;
+        } else {
+          print("File does not exist after writing.");
+          return null;
+        }
       } else {
+        print("Download failed with status ${response.statusCode}");
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Failed to download video.")));
@@ -90,38 +116,87 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
   }
 
   Future<void> _playVideo(File videoFile) async {
-    if (_videoController != null) {
-      await _videoController!.dispose();
+    try {
+      // Check if file exists and is large enough
+      if (!await videoFile.exists()) {
+        print("Video file does not exist: ${videoFile.path}");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Video file not found.")));
+        return;
+      }
+
+      if (await videoFile.length() <= 500 * 1024) {
+        print("Invalid or too small video file.");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Video file is too small or invalid.")),
+        );
+        return;
+      }
+
+      // Dispose previous controller if needed
+      if (_videoController != null) {
+        await _videoController!.dispose();
+      }
+
+      // Initialize and play
+      _videoController = VideoPlayerController.file(videoFile);
+      try {
+        await _videoController!.initialize();
+      } catch (e) {
+        print("Video initialize failed: $e");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Video cannot be played.")));
+        return;
+      }
+      await _videoController!.setLooping(true);
+      await _videoController!.play();
+
+      setState(() {}); // Update UI
+    } catch (e) {
+      print("Video init/play error: $e");
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Video play failed: $e")));
     }
-    _videoController = VideoPlayerController.file(videoFile);
-    await _videoController!.initialize();
-    await _videoController!.setLooping(true);
-    await _videoController!.play();
-    setState(() {});
+
+    setState(() {
+      _videoController = _videoController;
+    });
   }
 
   Future<void> _generateVideo() async {
+    // Start loading
+    setState(() {
+      _isLoading = true;
+      _generatedVideoUrl = null;
+      _videoController?.dispose();
+      _videoController = null;
+    });
+
+    // Validate inputs
     if (_selectedImage == null ||
         _promptController.text.isEmpty ||
         _selectedDuration == null ||
         _selectedAspectRatio == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Fill all fields and pick an image.")),
+        const SnackBar(content: Text("Fill all fields and pick an image.")),
       );
+      setState(() => _isLoading = false);
       return;
     }
 
-    setState(() => _isLoading = true);
-
     try {
-      await ensureUserExists();
+      await _ensureUserExists();
 
-      final uri = Uri.parse(
-        'http://192.168.100.123:8000/generate_video_from_image',
+      final url = Uri.parse(
+        'https://motionai-backend-production.up.railway.app/generate_video_from_image',
       );
+
       final request =
-          http.MultipartRequest('POST', uri)
-            ..fields['userId'] = userId
+          http.MultipartRequest('POST', url)
+            ..fields['userId'] = userId!
             ..fields['prompt'] = _promptController.text
             ..fields['duration'] = _selectedDuration!
             ..fields['aspect_ratio'] = _selectedAspectRatio!
@@ -136,46 +211,109 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
         final jsonResponse = json.decode(responseBody);
         final videoUrl = jsonResponse['download_url'];
 
+        print("Video URL received: $videoUrl");
+
         final videoFile = await _downloadVideoFileFromUrl(videoUrl);
         if (videoFile != null) {
           _downloadedVideoFile = videoFile;
-          await _playVideo(videoFile);
+          _videoController = VideoPlayerController.file(videoFile);
+          await _videoController!.initialize();
+          await _videoController!.play();
+
+          final creditsProvider = context.read<CreditsProvider>();
+          await creditsProvider.deductCredits(100);
+
+          setState(() {
+            _isLoading = false;
+            _generatedVideoUrl = videoFile.path;
+          });
+        } else {
+          throw Exception('Failed to download video file');
         }
       } else {
+        print("Server error: ${response.statusCode} ${response.reasonPhrase}");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error: ${response.reasonPhrase}")),
         );
+        setState(() => _isLoading = false);
       }
     } catch (e) {
-      print("Error: $e");
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Failed to generate video.")));
-    } finally {
-      setState(() => _isLoading = false);
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
-  Future<void> _downloadVideo(BuildContext context) async {
-    if (_downloadedVideoFile == null) return;
+  Future<void> _fetchUserId() async {
+    try {
+      final id = await UserManager.getUserID();
+      print("User ID inside TextToVideoUI: $id");
+
+      setState(() {
+        userId = id;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print("Error fetching user ID: $e");
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _downloadVideo(
+    BuildContext context,
+    String? generatedVideoPath,
+  ) async {
+    if (generatedVideoPath == null || generatedVideoPath.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invalid video path')));
+      return;
+    }
 
     try {
-      if (await _downloadedVideoFile!.exists()) {
-        await OpenFilex.open(_downloadedVideoFile!.path);
+      // Request necessary permissions
+      final storageStatus = await Permission.storage.request();
+      final manageStatus = await Permission.manageExternalStorage.request();
+
+      if (!storageStatus.isGranted && !manageStatus.isGranted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Video opened from ${_downloadedVideoFile!.path}'),
-          ),
+          const SnackBar(content: Text('Storage permission denied')),
         );
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Video file does not exist')));
+        return;
       }
+
+      final sourceFile = File(generatedVideoPath);
+
+      if (!await sourceFile.exists()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Source video file does not exist')),
+        );
+        return;
+      }
+
+      // Use external storage for downloads
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+      if (!await downloadsDir.exists()) {
+        await downloadsDir.create(recursive: true);
+      }
+
+      final fileName =
+          'downloaded_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final destinationPath = '${downloadsDir.path}/$fileName';
+      final destinationFile = File(destinationPath);
+
+      await destinationFile.writeAsBytes(await sourceFile.readAsBytes());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Video saved to Downloads as $fileName')),
+      );
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error opening video: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error saving video: $e')));
     }
   }
 
@@ -420,9 +558,8 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
                     onPressed:
                         _isLoading
                             ? null
-                            : () {
+                            : () async {
                               if (credits < 100) {
-                                // Navigate to CreditsPage if credits are insufficient
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -438,53 +575,162 @@ class _ImageToVideoScreenState extends State<ImageToVideoScreen> {
                                   ),
                                 );
                               } else {
-                                _generateVideo();
+                                setState(() {
+                                  _isLoading = true;
+                                  showGeneratingText = true;
+                                });
+
+                                await _generateVideo();
+
+                                if (!_isLoading && _generatedVideoUrl != null) {
+                                  setState(() {
+                                    showGeneratingText =
+                                        false; // hide the loading text before showing dialog
+                                  });
+
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) {
+                                      return AlertDialog(
+                                        title: Text(
+                                          'Video Generated',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        content: SizedBox(
+                                          width:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.8,
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              AspectRatio(
+                                                aspectRatio:
+                                                    _videoController!
+                                                        .value
+                                                        .aspectRatio,
+                                                child: VideoPlayer(
+                                                  _videoController!,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              ElevatedButton.icon(
+                                                onPressed:
+                                                    () => _downloadVideo(
+                                                      context,
+                                                      _generatedVideoUrl,
+                                                    ),
+                                                icon: const Icon(
+                                                  Icons.download,
+                                                ),
+                                                label: const Text("Download"),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () {
+                                              _videoController?.dispose();
+                                              Navigator.pop(context);
+                                            },
+                                            child: const Text('Close'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                } else {
+                                  setState(() {
+                                    showGeneratingText = false;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Video generation failed."),
+                                    ),
+                                  );
+                                }
                               }
                             },
+
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green, // background color
-                      foregroundColor: Colors.white, // text color
-                      padding: EdgeInsets.symmetric(
-                        vertical: 16,
-                      ), // bigger touch area
-                    ),
-                    child: Text(
-                      "Generate Video",
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                      backgroundColor: Colors.green,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
+                    child:
+                        _isLoading
+                            ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                            : Text(
+                              'Generate Video',
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
                   ),
                 ),
 
             SizedBox(height: 20),
-
-            if (_videoController != null &&
-                _videoController!.value.isInitialized)
-              AspectRatio(
-                aspectRatio: _videoController!.value.aspectRatio,
-                child: VideoPlayer(_videoController!),
+            if (showGeneratingText)
+              Padding(
+                padding: const EdgeInsets.only(top: 12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Generating Video...",
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Please wait while your video is being generated.\nEstimated time: 2–4 min",
+                      style: GoogleFonts.poppins(fontSize: 13),
+                    ),
+                  ],
+                ),
               ),
 
-            if (_downloadedVideoFile != null &&
-                _videoController != null &&
-                _videoController!.value.isInitialized)
-              Column(
-                children: [
-                  AspectRatio(
-                    aspectRatio: _videoController!.value.aspectRatio,
-                    child: VideoPlayer(_videoController!),
-                  ),
-                  SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    onPressed: () => _downloadVideo(context),
-                    icon: Icon(Icons.download),
-                    label: Text("Download Video"),
-                  ),
-                ],
-              ),
+            // if (_videoController != null &&
+            //     _videoController!.value.isInitialized)
+            //   AspectRatio(
+            //     aspectRatio: _videoController!.value.aspectRatio,
+            //     child: VideoPlayer(_videoController!),
+            //   ),
+
+            // if (_downloadedVideoFile != null &&
+            //     _videoController != null &&
+            //     _videoController!.value.isInitialized)
+            //   Column(
+            //     children: [
+            //       AspectRatio(
+            //         aspectRatio: _videoController!.value.aspectRatio,
+            //         child: VideoPlayer(_videoController!),
+            //       ),
+            //       SizedBox(height: 10),
+            //       ElevatedButton.icon(
+            //         onPressed: () => _downloadVideo(context),
+            //         icon: Icon(Icons.download),
+            //         label: Text("Download Video"),
+            //       ),
+            //     ],
+            //   ),
           ],
         ),
       ),

@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class VideoService {
-  static const String baseUrl = 'http://localhost:8000'; // Replace with your backend IP for mobile
+  static const String baseUrl =
+      'https://motionai-backend-production.up.railway.app'; // Replace with your backend IP for mobile
 
   static Future<String> generateVideo(String prompt) async {
     final response = await http.post(

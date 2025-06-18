@@ -15,6 +15,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as path;
+import 'package:flutter_downloader/flutter_downloader.dart';
 
 void main() {
   runApp(
@@ -73,7 +75,9 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
   }
 
   Future<void> ensureUserExists() async {
-    final url = Uri.parse('http://192.168.100.123:8000/create_user');
+    final url = Uri.parse(
+      'https://motionai-backend-production.up.railway.app/create_user',
+    );
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -104,9 +108,11 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     }
 
     try {
-      await ensureUserExists();
+      await ensureUserExists(); // make sure userId is initialized
 
-      final url = Uri.parse('http://192.168.100.123:8000/generate_video');
+      final url = Uri.parse(
+        'https://motionai-backend-production.up.railway.app/generate_video',
+      );
       final int durationSec = int.parse(selectedDuration.replaceAll('s', ''));
 
       final response = await http.post(
@@ -125,30 +131,33 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
         final data = jsonDecode(response.body);
         final downloadUrl = data['download_url'];
 
-        // Download video bytes from downloadUrl
         final videoResponse = await http.get(Uri.parse(downloadUrl));
         if (videoResponse.statusCode == 200) {
           final bytes = videoResponse.bodyBytes;
 
-          // Save to local file
           final directory = await getApplicationDocumentsDirectory();
           final filePath =
               '${directory.path}/generated_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
           final file = File(filePath);
           await file.writeAsBytes(bytes);
 
-          // Initialize video controller with local file
           _videoController = VideoPlayerController.file(file);
           await _videoController!.initialize();
           await _videoController!.play();
 
           _videoController!.addListener(() {
-            setState(() {}); // update UI on video progress
+            setState(() {});
           });
+
+          print('Status code: ${response.statusCode}');
+          print('Response body: ${response.body}');
+
+          final creditsProvider = context.read<CreditsProvider>();
+          await creditsProvider.deductCredits(100);
 
           setState(() {
             isLoading = false;
-            generatedVideoUrl = filePath; // now this is local path
+            generatedVideoUrl = filePath;
           });
         } else {
           setState(() => isLoading = false);
@@ -176,35 +185,56 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
 
   Future<void> downloadVideo(
     BuildContext context,
-    String? generatedVideoUrl,
+    String? generatedVideoPath,
   ) async {
-    if (generatedVideoUrl == null) return;
-
-    if (kIsWeb) {
+    if (generatedVideoPath == null || generatedVideoPath.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Download not supported on Web')));
+      ).showSnackBar(const SnackBar(content: Text('Invalid video path')));
       return;
     }
 
     try {
-      final file = File(generatedVideoUrl);
-      if (await file.exists()) {
-        // Just open the file directly
-        await OpenFilex.open(generatedVideoUrl);
+      // Request necessary permissions
+      final storageStatus = await Permission.storage.request();
+      final manageStatus = await Permission.manageExternalStorage.request();
 
+      if (!storageStatus.isGranted && !manageStatus.isGranted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Video opened from $generatedVideoUrl')),
+          const SnackBar(content: Text('Storage permission denied')),
         );
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Video file does not exist')));
+        return;
       }
+
+      final sourceFile = File(generatedVideoPath);
+
+      if (!await sourceFile.exists()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Source video file does not exist')),
+        );
+        return;
+      }
+
+      // Use external storage for downloads
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+      if (!await downloadsDir.exists()) {
+        await downloadsDir.create(recursive: true);
+      }
+
+      final fileName =
+          'downloaded_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final destinationPath = '${downloadsDir.path}/$fileName';
+      final destinationFile = File(destinationPath);
+
+      await destinationFile.writeAsBytes(await sourceFile.readAsBytes());
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Video saved to Downloads as $fileName')),
+      );
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error opening video: $e')));
+      ).showSnackBar(SnackBar(content: Text('Error saving video: $e')));
     }
   }
 
@@ -273,7 +303,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: CustomAppBar(title: 'Motion AI'),
-
       drawer: AppDrawer(),
       body: SafeArea(
         child: Stack(
@@ -298,7 +327,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                         ),
                       ),
                       const SizedBox(height: 8),
-
                       const SizedBox(height: 16),
                       Text(
                         'Prompt',
@@ -334,12 +362,10 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                         ),
                       ),
                       const SizedBox(height: 20),
-
-                      // Warning with icon
                       Row(
                         mainAxisAlignment: MainAxisAlignment.start,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.warning_amber_rounded,
                             color: Colors.redAccent,
                             size: 20,
@@ -348,7 +374,7 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                           Flexible(
                             child: Text(
                               'Avoid violent scenes, disturbing content, or any NSFW material.',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 color: Colors.redAccent,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 10,
@@ -358,7 +384,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 20),
                       Text(
                         'Example:',
@@ -376,7 +401,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                         ),
                         child: Text(
                           'A sunset over a calm ocean, and with reflection of sun in water.',
-
                           style: GoogleFonts.poppins(
                             color: Colors.white54,
                             fontSize: 14,
@@ -455,104 +479,13 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      if (generatedVideoUrl != null &&
-                          _videoController != null &&
-                          _videoController!.value.isInitialized)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Generated Video',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            AspectRatio(
-                              aspectRatio: _videoController!.value.aspectRatio,
-                              child: VideoPlayer(_videoController!),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    isVideoPlaying
-                                        ? Icons.pause_circle
-                                        : Icons.play_circle,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      if (isVideoPlaying) {
-                                        _videoController!.pause();
-                                      } else {
-                                        _videoController!.play();
-                                      }
-                                    });
-                                  },
-                                ),
-                                Expanded(
-                                  child: Slider(
-                                    activeColor: Colors.blueAccent,
-                                    inactiveColor: Colors.white24,
-                                    min: 0,
-                                    max:
-                                        videoDuration.inMilliseconds.toDouble(),
-                                    value:
-                                        videoPosition.inMilliseconds
-                                            .clamp(
-                                              0,
-                                              videoDuration.inMilliseconds,
-                                            )
-                                            .toDouble(),
-                                    onChanged: (value) {
-                                      _videoController!.seekTo(
-                                        Duration(milliseconds: value.toInt()),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                Text(
-                                  '${videoPosition.inSeconds}s / ${videoDuration.inSeconds}s',
-                                  style: const TextStyle(color: Colors.white70),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            ElevatedButton.icon(
-                              onPressed:
-                                  () =>
-                                      downloadVideo(context, generatedVideoUrl),
-                              icon: const Icon(
-                                Icons.download,
-                                color: Colors.white,
-                              ),
-                              label: const Text(
-                                'Download Video',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 12,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 30),
-                          ],
-                        ),
                     ],
                   ),
                 ),
               ),
             ),
 
+            // Generate Video Button Positioned
             Positioned(
               bottom: 24,
               left: 16,
@@ -565,7 +498,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                           ? null
                           : () {
                             if (credits < 100) {
-                              // Navigate to CreditsPage if credits are insufficient
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -581,7 +513,119 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                                 ),
                               );
                             } else {
-                              generateVideo();
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (context) {
+                                  bool localLoading = true;
+
+                                  return StatefulBuilder(
+                                    builder: (context, setState) {
+                                      if (localLoading) {
+                                        localLoading = false;
+                                        WidgetsBinding.instance
+                                            .addPostFrameCallback((_) async {
+                                              await generateVideo();
+                                              setState(() {});
+                                            });
+                                      }
+
+                                      return AlertDialog(
+                                        title: Text(
+                                          isLoading
+                                              ? 'Generating Video...'
+                                              : 'Video Generated',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        content: SizedBox(
+                                          width:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.8,
+                                          child:
+                                              isLoading
+                                                  ? Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const CircularProgressIndicator(),
+                                                      const SizedBox(
+                                                        height: 16,
+                                                      ),
+                                                      Text(
+                                                        'Please wait while we generate your video...',
+                                                        style:
+                                                            GoogleFonts.poppins(),
+                                                      ),
+                                                      Text(
+                                                        'Estimated Time: 2–4 minutes',
+                                                        style:
+                                                            GoogleFonts.poppins(
+                                                              fontSize: 12,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  )
+                                                  : _videoController != null &&
+                                                      _videoController!
+                                                          .value
+                                                          .isInitialized
+                                                  ? Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      AspectRatio(
+                                                        aspectRatio:
+                                                            _videoController!
+                                                                .value
+                                                                .aspectRatio,
+                                                        child: VideoPlayer(
+                                                          _videoController!,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(
+                                                        height: 12,
+                                                      ),
+                                                      ElevatedButton.icon(
+                                                        onPressed:
+                                                            () => downloadVideo(
+                                                              context,
+                                                              generatedVideoUrl,
+                                                            ),
+                                                        icon: const Icon(
+                                                          Icons.download,
+                                                        ),
+                                                        label: const Text(
+                                                          "Download",
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  )
+                                                  : Text(
+                                                    generatedVideoUrl == null
+                                                        ? 'Video generation failed or was cancelled.'
+                                                        : 'Video preview failed to load.',
+                                                    style:
+                                                        GoogleFonts.poppins(),
+                                                  ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () {
+                                              _videoController?.dispose();
+                                              Navigator.pop(context);
+                                            },
+                                            child: const Text('Close'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                              );
                             }
                           },
                   style: ElevatedButton.styleFrom(
