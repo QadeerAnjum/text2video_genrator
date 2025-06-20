@@ -121,6 +121,9 @@ class _PaymentPageState extends State<PaymentPage> {
       if (purchaseDetails.pendingCompletePurchase) {
         _inAppPurchase.completePurchase(purchaseDetails);
       }
+      debugPrint(
+        "Received purchase update: ${purchaseDetails.productID}, status: ${purchaseDetails.status}",
+      );
     }
   }
 
@@ -174,12 +177,24 @@ class _PaymentPageState extends State<PaymentPage> {
     _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
   }
 
-  void _restorePurchases() {
+  void _restorePurchases() async {
     setState(() {
       _purchasePending = true;
     });
 
-    _inAppPurchase.restorePurchases();
+    await _inAppPurchase.restorePurchases();
+
+    // Wait up to 5 seconds; remove loading if no restore happens
+    Future.delayed(Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _purchasePending = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No previous purchases found or restored.')),
+        );
+      }
+    });
   }
 
   String getPlanTitle(String productId) {
@@ -293,24 +308,10 @@ class _PaymentPageState extends State<PaymentPage> {
                   right: 16,
                   child: GestureDetector(
                     onTap: () async {
-                      final bool isSubscribed =
-                          await checkIfUserHasActiveSubscription();
-
-                      if (isSubscribed) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => TextToVideoUI()),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "You must subscribe to close this screen.",
-                            ),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => TextToVideoUI()),
+                      );
                     },
 
                     child: const Icon(

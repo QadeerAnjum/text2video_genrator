@@ -50,6 +50,13 @@ class CreditsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> addCredits(int amount) async {
+    final prefs = await SharedPreferences.getInstance();
+    _credits += amount;
+    await prefs.setInt('credits', _credits);
+    notifyListeners();
+  }
+
   Future<void> deductCredits(int amount) async {
     final prefs = await SharedPreferences.getInstance();
     _credits = (_credits - amount).clamp(0, _credits); // avoid negative credits

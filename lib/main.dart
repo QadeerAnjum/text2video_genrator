@@ -61,17 +61,20 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _handleNavigation() async {
+    // Show native splash for at least 3 seconds
+    await Future.delayed(const Duration(seconds: 3));
+
     final prefs = await SharedPreferences.getInstance();
     final hasSeenWelcome = prefs.getBool('hasSeenWelcome') ?? false;
 
     bool isSubscribed = await _checkSubscription();
 
     if (!hasSeenWelcome) {
+      prefs.setBool('hasSeenWelcome', true);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => WelcomeScreen()),
       );
-      prefs.setBool('hasSeenWelcome', true);
     } else if (isSubscribed) {
       Navigator.pushReplacement(
         context,
@@ -133,7 +136,30 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Center(child: CircularProgressIndicator()),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Your app logo
+            Image.asset(
+              'assets/trasns-videoapp.png', // Replace with your actual logo path
+              width: 150,
+              height: 150,
+            ),
+            const SizedBox(height: 30),
+
+            // Horizontal loading bar
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 40.0),
+              child: LinearProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                backgroundColor: Colors.white24,
+                minHeight: 6,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
