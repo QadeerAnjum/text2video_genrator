@@ -16,7 +16,8 @@ class PaymentPage extends StatefulWidget {
   State<PaymentPage> createState() => _PaymentPageState();
 }
 
-class _PaymentPageState extends State<PaymentPage> {
+class _PaymentPageState extends State<PaymentPage>
+    with SingleTickerProviderStateMixin {
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
   late StreamSubscription<List<PurchaseDetails>> _subscription;
 
@@ -27,10 +28,24 @@ class _PaymentPageState extends State<PaymentPage> {
   String? _queryProductError;
 
   final List<String> _productIds = ['weekly_plan_id', 'yearly_plan_id'];
+  String _selectedPlanId = 'weekly_plan_id'; // Default selected plan
+
+  // Animation Controller for pulsing
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..repeat(reverse: true); // Repeat for blinking
+
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
 
     final purchaseUpdated = _inAppPurchase.purchaseStream;
     _subscription = purchaseUpdated.listen(
@@ -175,6 +190,21 @@ class _PaymentPageState extends State<PaymentPage> {
     });
 
     _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+
+    // Fallback timeout: reset pending if user dismisses Play Store dialog
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && _purchasePending) {
+        setState(() {
+          _purchasePending = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Purchase was not completed.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    });
   }
 
   void _restorePurchases() async {
@@ -185,7 +215,7 @@ class _PaymentPageState extends State<PaymentPage> {
     await _inAppPurchase.restorePurchases();
 
     // Wait up to 5 seconds; remove loading if no restore happens
-    Future.delayed(Duration(seconds: 5), () {
+    Future.delayed(Duration(seconds: 3), () {
       if (mounted) {
         setState(() {
           _purchasePending = false;
@@ -301,27 +331,7 @@ class _PaymentPageState extends State<PaymentPage> {
             ),
             child: Stack(
               fit: StackFit.expand,
-              children: [
-                Image.asset('assets/image.png', fit: BoxFit.cover),
-                Positioned(
-                  top: 0,
-                  right: 16,
-                  child: GestureDetector(
-                    onTap: () async {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => TextToVideoUI()),
-                      );
-                    },
-
-                    child: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                ),
-              ],
+              children: [Image.asset('assets/image.png', fit: BoxFit.cover)],
             ),
           ),
 
@@ -359,16 +369,20 @@ class _PaymentPageState extends State<PaymentPage> {
                       ),
 
                     ..._products.map((product) {
+                      final isSelected = _selectedPlanId == product.id;
+
                       return _buildPlanCard(
                         title: getPlanTitle(product.id),
                         price: product.price,
                         coins: getPlanCoins(product.id),
                         discount: getDiscountText(product.id),
                         isPopular: isPlanPopular(product.id),
-                        onTap:
-                            _purchasePending
-                                ? null
-                                : () => _buyProduct(product),
+                        isSelected: isSelected,
+                        onTap: () {
+                          setState(() {
+                            _selectedPlanId = product.id;
+                          });
+                        },
                       );
                     }).toList(),
 
@@ -378,19 +392,97 @@ class _PaymentPageState extends State<PaymentPage> {
                         child: Center(child: CircularProgressIndicator()),
                       ),
 
+                    const SizedBox(height: 15),
+
+                    Center(
+                      child: AnimatedBuilder(
+                        animation: _scaleAnimation,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _scaleAnimation.value,
+                            child: child,
+                          );
+                        },
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.8,
+                          height: 60,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color.fromARGB(255, 45, 228, 170),
+                                  Color.fromARGB(255, 16, 115, 157),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: ElevatedButton(
+                              onPressed:
+                                  _purchasePending
+                                      ? null
+                                      : () {
+                                        try {
+                                          final selectedProduct = _products
+                                              .firstWhere(
+                                                (p) => p.id == _selectedPlanId,
+                                              );
+                                          _buyProduct(selectedProduct);
+                                        } catch (e) {
+                                          debugPrint('Product not found: $e');
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Selected plan is not available for purchase.',
+                                              ),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Text(
+                                    'Create Video',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(
+                                    Icons.arrow_forward,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
                     const SizedBox(height: 20),
 
                     Text(
                       "Subscription is auto-renewable and you will be charged unless you cancel before the renewal date. Secured by PlayStore.",
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 12,
+                        fontSize: 10,
                       ),
                       textAlign: TextAlign.center,
                     ),
-
-                    const SizedBox(height: 20),
-
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -399,13 +491,11 @@ class _PaymentPageState extends State<PaymentPage> {
                               _purchasePending ? null : _restorePurchases,
                           child: const Text(
                             "Restore Purchases",
-                            style: TextStyle(color: Colors.cyanAccent),
+                            style: TextStyle(color: Colors.blueAccent),
                           ),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 10),
 
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -450,8 +540,12 @@ class _PaymentPageState extends State<PaymentPage> {
     required int coins,
     String? discount,
     bool isPopular = false,
+    bool isSelected = false,
     VoidCallback? onTap,
   }) {
+    final bool isWeekly = title.toLowerCase().contains("weekly");
+    final bool isYearly = title.toLowerCase().contains("yearly");
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -459,14 +553,27 @@ class _PaymentPageState extends State<PaymentPage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient:
-              isPopular
+              isSelected
                   ? const LinearGradient(
-                    colors: [Color(0xFFFF8C00), Color(0xFFDAA520)],
+                    colors: [Color.fromRGBO(255, 140, 0, 1), Color(0xFFDAA520)],
                   )
-                  : null,
-          color: isPopular ? null : Colors.grey[900],
+                  : (!isWeekly && isPopular
+                      ? const LinearGradient(
+                        colors: [Color(0xFFFF8C00), Color(0xFFDAA520)],
+                      )
+                      : null),
+          color:
+              (!isSelected && isWeekly)
+                  ? null
+                  : (isSelected ? null : Colors.grey[900]),
           borderRadius: BorderRadius.circular(16),
-          border: isPopular ? null : Border.all(color: Colors.white24),
+          border: Border.all(
+            color:
+                isSelected
+                    ? const Color.fromRGBO(255, 140, 0, 1)
+                    : Colors.white24,
+            width: isSelected ? 2.5 : 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,7 +587,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 ),
                 child: const Text(
                   "Popular",
-                  style: TextStyle(fontSize: 12, color: Colors.black),
+                  style: TextStyle(fontSize: 10, color: Colors.black),
                 ),
               ),
             const SizedBox(height: 8),
@@ -492,7 +599,10 @@ class _PaymentPageState extends State<PaymentPage> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
-                    fontWeight: isPopular ? FontWeight.bold : FontWeight.normal,
+                    fontWeight:
+                        (isPopular || isYearly || isSelected)
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                   ),
                 ),
                 Text(

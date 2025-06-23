@@ -429,18 +429,6 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                               selected: selectedDuration == '5s',
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                selectedDuration = '10s';
-                              });
-                            },
-                            child: _dropOption(
-                              '10 seconds',
-                              selected: selectedDuration == '10s',
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 20),
