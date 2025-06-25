@@ -8,7 +8,6 @@ import 'package:Motion_AI/src/features/core/Screens/Paymentpage.dart';
 import 'package:Motion_AI/src/features/core/Screens/Text2VideoUI.dart';
 import 'package:Motion_AI/src/features/core/Screens/Image2Video.dart';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 
@@ -24,26 +23,22 @@ class AppDrawer extends StatefulWidget {
 class _AppDrawerState extends State<AppDrawer> {
   int selectedStars = 0;
 
-  String androidId = "Loading...";
+  String? userId;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initDeviceId();
+    _initUserId();
   }
 
-  Future<void> _initDeviceId() async {
-    final deviceInfo = DeviceInfoPlugin();
-    if (Platform.isAndroid) {
-      final androidInfo = await deviceInfo.androidInfo;
-      setState(() {
-        androidId = androidInfo.id; // This is the Android ID
-      });
-    } else {
-      setState(() {
-        androidId = "Not an Android device";
-      });
-    }
+  void _initUserId() async {
+    String id = await UserManager.getUserID();
+    print("📦 AppDrawer User ID: $id");
+    setState(() {
+      userId = id;
+      isLoading = false;
+    });
   }
 
   void _submitRating() {
@@ -262,7 +257,7 @@ class _AppDrawerState extends State<AppDrawer> {
                     Divider(color: Colors.grey.shade800, thickness: 0.2),
 
                     // Show User ID tile above About Us
-                    buildTile("User ID: $androidId"),
+                    buildTile("User ID: ${isLoading ? "Loading..." : userId}"),
                   ]),
                 ],
               ),

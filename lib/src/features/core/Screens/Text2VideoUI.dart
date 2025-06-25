@@ -465,6 +465,18 @@ class _TextToVideoUIState extends State<TextToVideoUI> {
                               selected: selectedAspectRatio == '1:1',
                             ),
                           ),
+                          const SizedBox(width: 12),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                selectedAspectRatio = '9:16';
+                              });
+                            },
+                            child: _dropOptionWithIcon(
+                              '9:16',
+                              selected: selectedAspectRatio == '9:16',
+                            ),
+                          ),
                         ],
                       ),
                     ],

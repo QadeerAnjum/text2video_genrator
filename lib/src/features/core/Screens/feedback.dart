@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class FeedbackPage extends StatefulWidget {
   @override
@@ -10,22 +12,38 @@ class _FeedbackPageState extends State<FeedbackPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController feedbackController = TextEditingController();
 
-  void _submitFeedback() {
+  void _submitFeedback() async {
     if (_formKey.currentState!.validate()) {
       final email = emailController.text.trim();
       final feedback = feedbackController.text.trim();
 
-      // You can send this data to Firebase, REST API, etc.
-      print("Feedback submitted:");
-      print("Email: $email");
-      print("Message: $feedback");
+      final url = Uri.parse(
+        "https://motionai-backend-production.up.railway.app/send_feedback",
+      );
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Thank you for your feedback!')));
+      try {
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'message': feedback}),
+        );
 
-      emailController.clear();
-      feedbackController.clear();
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Thank you for your feedback!')),
+          );
+          emailController.clear();
+          feedbackController.clear();
+        } else {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to send feedback.')));
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
